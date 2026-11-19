@@ -166,6 +166,21 @@ var DEFS=[
 {e:'WRWF',g:[[0,2],[1]],m:1,w:1,n:'Server core by a coolant stream'},
 {e:'WWRR',g:[[0,1],[2,3]],w:2,n:'Coolant bend with a lane bend'}
 ];
+(function(){
+  var T='CRFW',have=new Set();
+  function rots(p){var o=[];for(var r=0;r<4;r++){var q='';for(var w=0;w<4;w++)q+=p[(w-r+4)%4];o.push(q);}return o;}
+  DEFS.forEach(function(d){rots(d.e).forEach(function(q){have.add(q);});});
+  for(var a=0;a<4;a++)for(var b=0;b<4;b++)for(var c=0;c<4;c++)for(var e=0;e<4;e++){
+    var p=T[a]+T[b]+T[c]+T[e];if(have.has(p))continue;
+    rots(p).forEach(function(q){have.add(q);});
+    var cs=[],rs=[],ws=[],g=[];
+    for(var i=0;i<4;i++){if(p[i]==='C')cs.push(i);else if(p[i]==='R')rs.push(i);else if(p[i]==='W')ws.push(i);}
+    if(cs.length){if(rs.length||ws.length)cs.forEach(function(i){g.push([i]);});else g.push(cs);}
+    if(rs.length===2)g.push(rs);else rs.forEach(function(i){g.push([i]);});
+    if(ws.length===2)g.push(ws);else ws.forEach(function(i){g.push([i]);});
+    DEFS.push({e:p,g:g,w:.12,lake:(ws.length===1||ws.length>=3)?1:0,n:'Connector',filler:1});
+  }
+})();
 DEFS.forEach(function(d,i){d.i=i;d.sh=d.sh||0;});
 var TOTALW=DEFS.reduce(function(a,d){return a+d.w;},0);
 function randDef(){var r=Math.random()*TOTALW;for(var i=0;i<DEFS.length;i++){r-=DEFS[i].w;if(r<0)return i;}return 0;}
@@ -980,25 +995,41 @@ function candScore(x,y,r,d,cxv,cyv){
   s-=Math.hypot(x+.5-cxv,y+.5-cyv)*.15;
   return s+Math.random()*.3;
 }
+function autoPut(k,x,y,t,r,fromCur){
+  st.board.set(k,{t:t,r:r,p:st.turn});
+  addFrontier(x,y);
+  st.placed++;st.last=k;AUTO.n++;
+  if(AUTO.on===1)placeAnim={k:k,t:performance.now()};
+  scoreAfter(x,y);
+  var now=performance.now();
+  if(AUTO.on===1&&comps.length&&now-AUTO.lastChime>400){AUTO.lastChime=now;playChimes(comps);}
+  if(AUTO.on===1||AUTO.n%15===0)recordsAt(x,y,AUTO.on===1);
+  if(fromCur){st.cur=nextTile();st.rot=0;}
+  if(AUTO.n%40===0)save();
+}
+function fillHole(cells){
+  var best=null,bn=2;
+  cells.forEach(function(c){var nb=0;for(var w=0;w<4;w++)if(st.board.has(K(c[1]+DIRS[w][0],c[2]+DIRS[w][1])))nb++;if(nb>bn){bn=nb;best=c;}});
+  if(!best)return false;
+  var opts=[],tot=0;
+  DEFS.forEach(function(d){for(var r=0;r<4;r++)if(fitsAt(d,r,best[1],best[2])){opts.push([d.i,r,d.w]);tot+=d.w;}});
+  if(!opts.length)return false;
+  var pick=Math.random()*tot,o=opts[0];
+  for(var i=0;i<opts.length;i++){pick-=opts[i][2];if(pick<0){o=opts[i];break;}}
+  autoPut(best[0],best[1],best[2],o[0],o[1],false);
+  return true;
+}
 function autoPlaceOne(){
   var cells=autoCells();
   if(!cells.length){AUTO.idle=true;return false;}
   AUTO.idle=false;
+  if(fillHole(cells))return true;
   var cw=toWorld(W/2,H/2),cxv=cw[0]/S,cyv=cw[1]/S;
   for(var attempt=0;attempt<4;attempt++){
     var d=DEFS[st.cur],best=null,bv=-1e9;
     cells.forEach(function(c){for(var r=0;r<4;r++)if(fitsAt(d,r,c[1],c[2])){var v=candScore(c[1],c[2],r,d,cxv,cyv);if(v>bv){bv=v;best=[c[0],c[1],c[2],r];}}});
     if(best&&(bv>-40||attempt===3)){
-      st.board.set(best[0],{t:st.cur,r:best[3],p:st.turn});
-      addFrontier(best[1],best[2]);
-      st.placed++;st.last=best[0];AUTO.n++;
-      if(AUTO.on===1)placeAnim={k:best[0],t:performance.now()};
-      scoreAfter(best[1],best[2]);
-      var now=performance.now();
-      if(AUTO.on===1&&comps.length&&now-AUTO.lastChime>400){AUTO.lastChime=now;playChimes(comps);}
-      if(AUTO.on===1||AUTO.n%15===0)recordsAt(best[1],best[2],AUTO.on===1);
-      st.cur=nextTile();st.rot=0;
-      if(AUTO.n%40===0)save();
+      autoPut(best[0],best[1],best[2],st.cur,best[3],true);
       return true;
     }
     st.cur=nextTile();
