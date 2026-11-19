@@ -12,6 +12,8 @@ html,body{height:100%;overflow:hidden;background:#f4f1e8;font-family:system-ui,-
 .pl{padding:5px 10px;border-radius:999px;background:#efece2;font-weight:700;font-size:14px;border:2px solid transparent;white-space:nowrap}
 .pl.on{border-color:currentColor;background:#fff}
 .pl small{font-weight:600;opacity:.7;margin-left:4px}
+#rec{width:100%;display:flex;gap:6px;font-size:13px;font-weight:700}
+.rc{padding:4px 10px;border-radius:999px;background:#fff7e6;border:1px solid #e6cf9c}
 #menuBtn{margin-left:auto;padding:6px 12px;min-height:36px}
 button{font:inherit;font-size:15px;font-weight:700;border:1px solid #d3cebf;background:#fff;color:#2b2a26;border-radius:10px;padding:8px 10px;min-height:44px;touch-action:manipulation}
 button:active{background:#efece2}
@@ -42,7 +44,7 @@ button:disabled{opacity:.4}
 </head>
 <body>
 <canvas id="cv"></canvas>
-<div id="top"><div id="players" style="display:flex;gap:6px;flex-wrap:wrap"></div><button id="menuBtn">Menu</button></div>
+<div id="top"><div id="players" style="display:flex;gap:6px;flex-wrap:wrap"></div><button id="menuBtn">Menu</button><div id="rec"></div></div>
 <div id="bottom">
   <div id="info"></div>
   <div id="row">
@@ -126,7 +128,7 @@ var cam={x:S/2,y:S/2,s:1};
 var st=null,fits=new Map(),sel=null,popups=[],dirty=true,menuN=1;
 
 function newGame(n){
-  st={board:new Map(),players:[],q:[randDef(),randDef(),randDef()],cur:randDef(),rot:0,turn:0,scored:new Set(),scoredM:new Set(),frontier:new Set(),placed:0,cities:0,roads:0,last:'0,0'};
+  st={board:new Map(),players:[],q:[randDef(),randDef(),randDef()],cur:randDef(),rot:0,turn:0,scored:new Set(),scoredM:new Set(),frontier:new Set(),placed:0,cities:0,roads:0,last:'0,0',rec:{road:{n:0,p:-1},city:{n:0,p:-1}}};
   for(var i=0;i<n;i++)st.players.push({score:0,rerolls:3,hold:-1,ms:0});
   st.board.set('0,0',{t:3,r:0,p:-1});
   addFrontier(0,0);
@@ -228,6 +230,29 @@ function scoreAfter(x,y){
     if(m>p.ms){p.ms=m;toast((st.players.length>1?PNAME[i]+' hit ':'You hit ')+(m*100)+' points');}
   });
 }
+function checkRecord(f,announce){
+  var key=f.type==='R'?'road':f.type==='C'?'city':null;if(!key)return;
+  var n=f.tiles.size,r=st.rec[key];
+  if(n>r.n){
+    var w=winners(f.tiles)[0];var changed=r.p!==w;
+    r.n=n;r.p=w;
+    if(announce&&n>=3){
+      var lbl=key==='road'?'Longest Road':'Biggest Castle';
+      toast(lbl+' now '+n+' tiles'+(st.players.length>1&&changed?' ('+PNAME[w]+')':''));
+    }
+  }
+}
+function recordsAt(x,y,announce){
+  var t=st.board.get(K(x,y)),gs=wg(DEFS[t.t],t.r);
+  for(var i=0;i<gs.length;i++)checkRecord(feature(x,y,gs[i][0]),announce);
+}
+function scanRecords(){
+  st.rec={road:{n:0,p:-1},city:{n:0,p:-1}};var seen=new Set();
+  st.board.forEach(function(t,k){
+    var p=k.split(','),x=+p[0],y=+p[1],gs=wg(DEFS[t.t],t.r);
+    for(var i=0;i<gs.length;i++){var nk=k+','+gs[i][0];if(seen.has(nk))continue;var f=feature(x,y,gs[i][0]);f.vis.forEach(function(v){seen.add(v);});checkRecord(f,false);}
+  });
+}
 function place(){
   if(!sel)return;
   var list=fits.get(sel);
@@ -237,6 +262,7 @@ function place(){
   addFrontier(x,y);
   st.placed++;st.last=sel;
   scoreAfter(x,y);
+  recordsAt(x,y,true);
   sel=null;
   st.turn=(st.turn+1)%st.players.length;
   st.cur=nextTile();st.rot=0;
@@ -269,7 +295,7 @@ function fitsFor(k){return true;}
 function save(){
   try{
     var b=[];st.board.forEach(function(v,k){b.push([k,v.t,v.r,v.p]);});
-    localStorage.setItem(SAVE_KEY,JSON.stringify({b:b,players:st.players,q:st.q,cur:st.cur,rot:st.rot,turn:st.turn,scored:Array.from(st.scored),scoredM:Array.from(st.scoredM),placed:st.placed,cities:st.cities,roads:st.roads,last:st.last,cam:cam}));
+    localStorage.setItem(SAVE_KEY,JSON.stringify({b:b,players:st.players,q:st.q,cur:st.cur,rot:st.rot,turn:st.turn,scored:Array.from(st.scored),scoredM:Array.from(st.scoredM),placed:st.placed,cities:st.cities,roads:st.roads,last:st.last,rec:st.rec,cam:cam}));
   }catch(e){}
 }
 function load(){
@@ -278,6 +304,7 @@ function load(){
     st={board:new Map(),players:s.players,q:s.q,cur:s.cur,rot:s.rot||0,turn:s.turn||0,scored:new Set(s.scored),scoredM:new Set(s.scoredM),frontier:new Set(),placed:s.placed||0,cities:s.cities||0,roads:s.roads||0,last:s.last||'0,0'};
     s.b.forEach(function(a){st.board.set(a[0],{t:a[1],r:a[2],p:a[3]});});
     st.board.forEach(function(v,k){var p=k.split(',');addFrontierLoad(+p[0],+p[1]);});
+    if(s.rec)st.rec=s.rec;else scanRecords();
     if(s.cam)cam=s.cam;
     recompute();ensurePlaceable();return true;
   }catch(e){return false;}
@@ -421,6 +448,9 @@ function ui(){
     h+='<div class="pl'+(i===st.turn&&st.players.length>1?' on':'')+'" style="color:'+(st.players.length>1?PCOL[i]:'#2b2a26')+'">'+nm+' '+p.score+'<small>'+p.rerolls+'r</small></div>';
   });
   document.getElementById('players').innerHTML=h;
+  var multi=st.players.length>1;
+  function badge(lbl,r){var c=multi&&r.p>=0?PCOL[r.p]:'#7a5a1c';return '<div class="rc" style="color:'+c+'">'+lbl+' '+r.n+(multi&&r.p>=0?' '+PNAME[r.p]:'')+'</div>';}
+  document.getElementById('rec').innerHTML=badge('Longest Road',st.rec.road)+badge('Biggest Castle',st.rec.city);
   drawSmall('cur',st.cur,st.rot);drawSmall('n0',st.q[0],0);drawSmall('n1',st.q[1],0);drawSmall('hold',P().hold,0);
   var rr=document.getElementById('rerollBtn');rr.textContent='Reroll ('+P().rerolls+')';rr.disabled=P().rerolls<=0;
   document.getElementById('holdBtn').textContent=P().hold<0?'Hold':'Swap';
