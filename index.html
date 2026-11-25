@@ -163,8 +163,11 @@ input.tin.nm{text-transform:none}
   <p style="margin-bottom:4px"><b>Your name</b></p>
   <div class="mrow" style="margin-bottom:12px"><input id="nameIn" class="tin nm" maxlength="16" placeholder="Player"></div>
   <p style="margin-bottom:4px"><b>Mode</b></p>
-  <div class="pc" id="mcount"><button data-m="marathon" class="sel">Marathon</button><button data-m="heart">Heart Zone</button></div>
+  <div class="pc" id="mcount" style="flex-wrap:wrap"><button data-m="marathon" class="sel">Marathon</button><button data-m="heart">Heart Zone</button><button data-m="classic">Classic</button><button data-m="sprint">Sprint</button><button data-m="daily">Daily</button></div>
   <p>Heart Zone is a solo ranked run. You get 3 hearts and 15 seconds per tile. Running out of time, drawing a tile with no spot, or going 3 tiles in a row without finishing anything costs a heart. Finishing things on back to back turns builds a combo that multiplies points, and sealing a district of 8 tiles or more wins a heart back, up to 5. The run ends at zero hearts.</p>
+  <p>Classic has a bag of 72 tiles. When it runs out, anything still open scores: lanes and coolant 1 per tile, districts 1 per tile plus 1 per chip, unfinished cores 1 per filled square around them, and open meadows 3 for each sealed district they touch. Whoever holds each record at the end gets 10 more. Solo Classic games go on the board. Classic also works with more players and bots.</p>
+  <p>Sprint gives you five minutes and a bag that never runs out. Everything you finish in the last 30 seconds scores half again.</p>
+  <p>Daily Challenge is Classic with the same bag for everyone that day. Your first finished run each day goes on the daily board. Runs after that are practice.</p>
   <p style="margin-bottom:4px"><b>New game players</b></p>
   <div class="pc" id="pcount"><button data-n="1" class="sel">1</button><button data-n="2">2</button><button data-n="3">3</button><button data-n="4">4</button></div>
   <p style="margin-bottom:4px"><b>Map skin (locked for the whole map)</b></p>
@@ -199,6 +202,7 @@ input.tin.nm{text-transform:none}
   <h2 id="overTitle">Out of hearts</h2>
   <div class="stats" id="overStats"></div>
   <div class="stats" id="overRank"></div>
+  <div class="pc" id="bmode" style="flex-wrap:wrap"><button data-m="heart" class="sel">Heart</button><button data-m="classic">Classic</button><button data-m="sprint">Sprint</button><button data-m="daily">Daily</button></div>
   <div class="pc" id="bperiod"><button data-p="all" class="sel">All time</button><button data-p="week">This week</button></div>
   <div id="boardList"></div>
   <div class="mrow"><button id="againBtn" class="primary">New Heart Zone</button><button id="overMenu">Menu</button></div>
@@ -225,6 +229,14 @@ var SAVE_KEY='tiletopia_v1';
 // Testing override: open the game with ?server=host to store a different host on this device, ?server=clear to drop it.
 var SERVER_URL='tile-topia-server-production.up.railway.app';
 var HZ_CLOCK=15,HZ_START=3,HZ_MAX=5,HZ_STALL=3,HZ_BIG=8;
+// GREEN PHONE EDIT: mode table. bag means a fixed 72 tile bag with final scoring, solo means one player only.
+var RULES_V='2026.11.24c';
+var BAG_N=72,SPRINT_MS=300000,SPRINT_BONUS_MS=30000,RECORD_BONUS=10;
+var MODES={marathon:{name:'Marathon'},heart:{name:'Heart Zone',solo:1,ranked:1},classic:{name:'Classic',bag:1,ranked:1},sprint:{name:'Sprint',solo:1,ranked:1},daily:{name:'Daily Challenge',solo:1,bag:1,ranked:1}};
+function MI(){return MODES[st&&st.mode]||MODES.marathon;}
+var REPLAY_CLK=null;
+function gclock(){if(REPLAY_CLK!=null)return REPLAY_CLK;if(st.mode==='sprint'&&!st.go)return 0;return Date.now()-(st.t0||Date.now());}
+function logAct(a){if(st.mode==='sprint'&&!st.go&&REPLAY_CLK==null){st.go=1;st.t0=Date.now();}st.clk=gclock();a.push(st.clk);if(st.log)st.log.push(a);}
 
 var DEFS=[
 {e:'FFRF',g:[[2]],m:1,w:2,n:'Server core on a data lane'},
@@ -303,13 +315,14 @@ var st=null,fits=new Map(),sel=null,popups=[],dirty=true,menuN=1,menuB=0,comps=[
 function newGame(n,b,skin,opt){
   opt=opt||{};b=b||0;
   var mode=opt.mode||'marathon';
-  if(mode==='heart'){n=1;b=0;}
+  if((MODES[mode]||{}).solo){n=1;b=0;}
   if(opt.npc){n=opt.npc.length;b=0;}
   if(n+b>4)b=4-n;
   if(skin)VIEW.skin=skin;HF=new Map();
   var seed=opt.seed!=null?opt.seed>>>0:newSeed();
-  st={board:new Map(),players:[],q:[],cur:0,rot:0,turn:0,scored:new Set(),scoredM:new Set(),frontier:new Set(),placed:0,cities:0,roads:0,last:'0,0',rec:{road:{n:0,p:-1},city:{n:0,p:-1},river:{n:0,p:-1},meadow:{n:0,p:-1}},mode:mode,seed:seed,rs:seed|0,t0:Date.now(),over:false};
-  st.q=[randDef(),randDef(),randDef()];st.cur=randDef();
+  st={board:new Map(),players:[],q:[],cur:0,rot:0,turn:0,scored:new Set(),scoredM:new Set(),frontier:new Set(),placed:0,cities:0,roads:0,last:'0,0',rec:{road:{n:0,p:-1},city:{n:0,p:-1},river:{n:0,p:-1},meadow:{n:0,p:-1}},mode:mode,seed:seed,rs:seed|0,t0:Date.now(),over:false,
+    bag:(MODES[mode]||{}).bag?BAG_N:null,log:(MODES[mode]||{}).ranked?[]:null,clk:0,practice:!!opt.practice,day:opt.day||null};
+  st.q=[bagDraw(),bagDraw(),bagDraw()];st.cur=bagDraw();
   if(mode==='heart')st.hz={hearts:HZ_START,combo:0,stall:0,turnAt:Date.now()};
   for(var i=0;i<n+b;i++)st.players.push({score:0,rerolls:3,hold:-1,ms:0,npc:opt.npc?!!opt.npc[i]:i>=n});
   st.board.set('0,0',{t:3,r:0,p:-1});
@@ -361,7 +374,7 @@ function fitsAt(d,r,x,y){
   return any;
 }
 function recompute(){
-  fits=new Map();var d=DEFS[st.cur];
+  fits=new Map();if(st.cur<0){dirty=true;return;}var d=DEFS[st.cur];
   st.frontier.forEach(function(k){
     var p=k.split(','),x=+p[0],y=+p[1],list=[];
     for(var r=0;r<4;r++)if(fitsAt(d,r,x,y))list.push(r);
@@ -369,10 +382,12 @@ function recompute(){
   });
   dirty=true;
 }
-function nextTile(){var t=st.q.shift();st.q.push(randDef());return t;}
+function nextTile(){var t=st.q.shift();st.q.push(bagDraw());return t;}
+// GREEN PHONE EDIT: in bag modes the bag runs dry and -1 means no tile.
+function bagDraw(){if(st.bag!=null){if(st.bag<=0)return -1;st.bag--;}return randDef();}
 function ensurePlaceable(){
   var tries=0;
-  while(fits.size===0&&tries<60){
+  while(fits.size===0&&tries<60&&st.cur>=0){
     toast('No spot for that one, tossed');st.cur=nextTile();st.rot=0;recompute();tries++;
     if(st.mode==='heart'&&!st.over)loseHeart('No spot for that tile');
   }
@@ -409,6 +424,7 @@ function winners(tiles){
 }
 function award(list,pts,label,wx,wy){
   if(st.mode==='heart'&&st.hz)pts=Math.round(pts*hzMult()); // GREEN PHONE EDIT: Heart Zone combo
+  if(st.mode==='sprint'&&st.clk>SPRINT_MS-SPRINT_BONUS_MS)pts=Math.round(pts*1.5); // GREEN PHONE EDIT: last 30 seconds of a Sprint
   list.forEach(function(p){st.players[p].score+=pts;});
   if(AUTO.on===2)return;
   popups.push({x:wx,y:wy,text:tr(label)+' +'+pts,c:st.players.length>1?PCOL[list[0]]:COL.popC,t:performance.now()});
@@ -482,6 +498,7 @@ function place(){
   if(!sel||st.over)return;
   var list=fits.get(sel);
   if(!list||list.indexOf(st.rot)<0){toast('Does not fit that way');return;}
+  logAct(['p',sel,st.rot]);
   var p=sel.split(','),x=+p[0],y=+p[1];
   st.board.set(sel,{t:st.cur,r:st.rot,p:st.turn});
   addFrontier(x,y);
@@ -494,8 +511,52 @@ function place(){
   st.turn=(st.turn+1)%st.players.length;
   st.cur=nextTile();st.rot=0;
   if(st.hz)st.hz.turnAt=Date.now();
-  recompute();if(!st.over)ensurePlaceable();commitMove();ui();maybeNPC();
+  recompute();if(!st.over)ensurePlaceable();checkEnd();commitMove();ui();maybeNPC();
   if(st.over)gameOver();
+}
+// GREEN PHONE EDIT: end of a bag. A held tile gets played before the game ends.
+function checkEnd(){
+  if(st.over||st.cur>=0)return;
+  var pl=P();
+  if(pl.hold>=0){st.cur=pl.hold;pl.hold=-1;st.rot=0;recompute();ensurePlaceable();if(st.cur>=0)return;}
+  finishGame();
+}
+function finishGame(){
+  if(st.fin)return;st.fin=true;st.over=true;
+  if(MI().bag)finalScore();
+}
+// Bag modes score what is left open when the bag runs out, then pay the record holders.
+function finalScore(){
+  var fs={open:0,cores:0,meadows:0,records:0},seen=new Set(),fseen=new Set();
+  st.board.forEach(function(t,k){
+    var p=k.split(','),x=+p[0],y=+p[1],d=DEFS[t.t],gs=wg(d,t.r);
+    for(var i=0;i<gs.length;i++){
+      var vk=k+','+gs[i][0];if(seen.has(vk)||st.scored.has(vk))continue;
+      var f=feature(x,y,gs[i][0]);f.vis.forEach(function(v){seen.add(v);});
+      if(!f.open||!f.tiles.size)continue;
+      var n=f.tiles.size,pts=f.type==='C'?n+f.sh:(f.type==='R'||f.type==='W')?n:0;
+      if(pts>0){var c=centroid(f.tiles);award(winners(f.tiles),pts,f.type==='C'?'Open district':f.type==='R'?'Open lane':'Open coolant',c[0],c[1]);fs.open+=pts;}
+    }
+    if(d.m&&!st.scoredM.has(k)){
+      var full=0;for(var ax=-1;ax<=1;ax++)for(var ay=-1;ay<=1;ay++)if(st.board.has(K(x+ax,y+ay)))full++;
+      award([t.p>=0?t.p:0],full,'Unfinished core',(x+.5)*S,(y+.5)*S);fs.cores+=full;
+    }
+    var info=fieldInfo(d,t.r);
+    for(var ri=0;ri<info.regions.length;ri++){
+      var fk=k+','+ri;if(fseen.has(fk)||st.scored.has('f:'+fk))continue;
+      var ff=fieldFeature(x,y,ri,false);ff.vis.forEach(function(v){fseen.add(v);});
+      if(!ff.open)continue;
+      var dc=doneCities(ff);
+      if(dc>0){var cc=centroid(ff.tiles);award(winners(ff.tiles),3*dc,'Open meadow',cc[0],cc[1]);fs.meadows+=3*dc;}
+    }
+  });
+  ['road','city','river','meadow'].forEach(function(key){
+    var r=st.rec[key];if(!r||r.n<3)return;
+    var who=r.p>=0&&r.p<st.players.length?r.p:0;
+    award([who],RECORD_BONUS,key==='road'?'Longest Road':key==='city'?'Biggest Castle':key==='river'?'Longest River':'Biggest Meadow',0,0);
+    fs.records+=RECORD_BONUS;
+  });
+  st.fs=fs;
 }
 // GREEN PHONE EDIT: Heart Zone rules
 function hzMult(){return 1+.5*(st.hz?st.hz.combo:0);}
@@ -512,27 +573,42 @@ function loseHeart(why){
   if(hz.hearts<=0){hz.hearts=0;st.over=true;}
 }
 var hzLast=0,hzUi=0;
-function hzTick(){
-  var hud=document.getElementById('hud');
-  if(!st||st.mode!=='heart'||!st.hz){if(hud.classList.contains('show'))hud.classList.remove('show');return;}
+function hzTimeout(){
+  logAct(['t']);
+  loseHeart('Too slow');
+  st.cur=nextTile();st.rot=0;sel=null;st.hz.turnAt=Date.now();
+  recompute();if(!st.over)ensurePlaceable();
+}
+function fmtClock(ms){ms=Math.max(0,ms);var s2=Math.ceil(ms/1000);return Math.floor(s2/60)+':'+('0'+s2%60).slice(-2);}
+// GREEN PHONE EDIT: one clock for every mode that shows the bar above the tile tray
+function modeTick(){
+  var hud=document.getElementById('hud'),m=st&&st.mode;
+  if(!st||!(m==='heart'||MI().bag||m==='sprint')){if(hud.classList.contains('show'))hud.classList.remove('show');return;}
   hud.classList.add('show');
-  var now=Date.now(),hz=st.hz,gap=hzLast?now-hzLast:0;hzLast=now;
-  // The clock stops while a menu covers the board or the tab is in the background.
-  if(st.over||document.querySelector('.ov.show')||document.hidden||gap>1000)hz.turnAt+=gap;
-  var left=HZ_CLOCK*1000-(now-hz.turnAt);
-  if(!st.over&&left<=0){
-    loseHeart('Too slow');
-    st.cur=nextTile();st.rot=0;sel=null;hz.turnAt=now;
-    recompute();if(!st.over)ensurePlaceable();save();ui();
-    if(st.over){gameOver();return;}
-    left=HZ_CLOCK*1000;
+  var now=Date.now(),gap=hzLast?now-hzLast:0;hzLast=now;
+  var lt='',rt='',pct=1;
+  if(m==='heart'&&st.hz){
+    var hz=st.hz;
+    // The clock stops while a menu covers the board or the tab is in the background.
+    if(st.over||document.querySelector('.ov.show')||document.hidden||gap>1000)hz.turnAt+=gap;
+    var left=HZ_CLOCK*1000-(now-hz.turnAt);
+    if(!st.over&&left<=0){hzTimeout();save();ui();if(st.over){gameOver();return;}left=HZ_CLOCK*1000;}
+    for(var i=0;i<HZ_MAX;i++)lt+=i<hz.hearts?'♥':'♡';
+    pct=left/(HZ_CLOCK*1000);rt='x'+hzMult()+' '+Math.ceil(Math.max(0,left)/1000)+'s';
+  }else if(m==='sprint'){
+    // A Sprint runs on the wall clock and does not pause.
+    var sl=st.go?SPRINT_MS-(now-st.t0):SPRINT_MS;
+    if(!st.over&&sl<=0){finishGame();save();ui();gameOver();return;}
+    lt='Sprint';pct=sl/SPRINT_MS;rt=st.over?'0:00':(sl<=SPRINT_BONUS_MS?'x1.5 ':'')+fmtClock(sl);
+  }else{
+    var inBag=(st.bag||0)+st.q.filter(function(t){return t>=0;}).length+(st.cur>=0?1:0);
+    lt=(st.mode==='daily'?'Daily ':'')+'Bag';pct=inBag/BAG_N;rt=inBag+' left';
   }
   if(now-hzUi<200)return;hzUi=now;
-  var h='';for(var i=0;i<HZ_MAX;i++)h+=i<hz.hearts?'♥':'♡';
-  document.getElementById('hearts').textContent=h;
-  var bar=document.querySelector('#hclock div'),pct=Math.max(0,Math.min(1,left/(HZ_CLOCK*1000)));
+  document.getElementById('hearts').textContent=lt;
+  var bar=document.querySelector('#hclock div');pct=Math.max(0,Math.min(1,pct));
   bar.style.width=(pct*100)+'%';bar.style.background=pct<.3?'#d2304a':pct<.6?'#e0a020':'#2e9a52';
-  document.getElementById('hcombo').textContent='x'+hzMult()+' '+Math.ceil(Math.max(0,left)/1000)+'s';
+  document.getElementById('hcombo').textContent=rt;
 }
 function featPts(f){var n=f.tiles.size;if(f.type==='R')return n*(f.inn?2:1);if(f.type==='C')return (n+f.sh)*(f.cat?3:2);if(f.type==='W')return n*2;return 0;}
 function evalMove(k,x,y,r){
@@ -625,19 +701,21 @@ function rotate(){
   dirty=true;ui();
 }
 function hold(){
-  var pl=P();
-  if(pl.hold<0){pl.hold=st.cur;st.cur=nextTile();}
+  var pl=P();if(st.cur<0||st.over)return;
+  logAct(['h']);
+  if(pl.hold<0){pl.hold=st.cur;st.cur=nextTile();if(st.cur<0){st.cur=pl.hold;pl.hold=-1;toast('The bag is empty');}}
   else{var h=pl.hold;pl.hold=st.cur;st.cur=h;}
-  st.rot=0;sel=null;recompute();ensurePlaceable();commitMove();ui();
+  st.rot=0;sel=null;recompute();ensurePlaceable();checkEnd();commitMove();ui();
   if(st.over)gameOver();
 }
 function reroll(){
-  var pl=P();if(pl.rerolls<=0)return;
+  var pl=P();if(pl.rerolls<=0||st.cur<0||st.over)return;
+  logAct(['x']);
   pl.rerolls--;st.cur=nextTile();st.rot=0;
   if(sel&&!fitsFor(sel))sel=null;
   recompute();
   if(sel&&fits.get(sel))st.rot=fits.get(sel)[0];else sel=null;
-  ensurePlaceable();commitMove();ui();netPreview();
+  ensurePlaceable();checkEnd();commitMove();ui();netPreview();
   if(st.over)gameOver();
 }
 function fitsFor(k){return true;}
@@ -646,11 +724,13 @@ function fitsFor(k){return true;}
 function serialize(){
   var b=[];st.board.forEach(function(v,k){b.push([k,v.t,v.r,v.p]);});
   return {b:b,players:st.players,q:st.q,cur:st.cur,rot:st.rot,turn:st.turn,scored:Array.from(st.scored),scoredM:Array.from(st.scoredM),placed:st.placed,cities:st.cities,roads:st.roads,last:st.last,skin:st.skin,landmarks:st.landmarks||[],rec:st.rec,
-    mode:st.mode||'marathon',seed:st.seed,rs:st.rs,t0:st.t0,hz:st.hz||null,over:!!st.over,sub:!!st.sub};
+    mode:st.mode||'marathon',seed:st.seed,rs:st.rs,t0:st.t0,hz:st.hz||null,over:!!st.over,sub:!!st.sub,
+    bag:st.bag==null?null:st.bag,log:st.log||null,clk:st.clk||0,fin:!!st.fin,fs:st.fs||null,go:st.go||0,practice:!!st.practice,day:st.day||null};
 }
 function deserialize(s){
   st={board:new Map(),players:s.players,q:s.q,cur:s.cur,rot:s.rot||0,turn:s.turn||0,scored:new Set(s.scored),scoredM:new Set(s.scoredM),frontier:new Set(),placed:s.placed||0,cities:s.cities||0,roads:s.roads||0,last:s.last||'0,0',
-    mode:s.mode||'marathon',seed:s.seed!=null?s.seed:newSeed(),rs:null,t0:s.t0||Date.now(),hz:s.hz||null,over:!!s.over,sub:!!s.sub};
+    mode:s.mode||'marathon',seed:s.seed!=null?s.seed:newSeed(),rs:null,t0:s.t0||Date.now(),hz:s.hz||null,over:!!s.over,sub:!!s.sub,
+    bag:s.bag==null?null:s.bag,log:s.log||null,clk:s.clk||0,fin:!!s.fin,fs:s.fs||null,go:s.go||0,practice:!!s.practice,day:s.day||null};
   st.rs=s.rs!=null?s.rs:(st.seed|0);
   s.b.forEach(function(a){st.board.set(a[0],{t:a[1],r:a[2],p:a[3]});});
   st.board.forEach(function(v,k){var p=k.split(',');addFrontierLoad(+p[0],+p[1]);});
@@ -1815,7 +1895,7 @@ function fogSprite(){
   x.fillStyle=g;x.fillRect(0,0,128,128);FOG={skin:VIEW.skin,c:c};return c;
 }
 var lastF=0;
-function frame(n){requestAnimationFrame(frame);if(n-lastF<30)return;lastF=n;autoStep();hzTick();draw();}
+function frame(n){requestAnimationFrame(frame);if(n-lastF<30)return;lastF=n;autoStep();modeTick();draw();}
 
 function drawSmall(id,t,r){
   var c=document.getElementById(id),x=c.getContext('2d'),w=c.width;
@@ -1840,11 +1920,11 @@ function ui(){
   document.getElementById('holdBtn').textContent=P().hold<0?'Hold':'Swap';
   var ok=sel&&(fits.get(sel)||[]).indexOf(st.rot)>=0;
   document.getElementById('placeBtn').disabled=!ok;
-  var info=(st.players.length>1?pname(st.turn)+': ':'')+tr(DEFS[st.cur].n);
+  var info=(st.players.length>1?pname(st.turn)+': ':'')+(st.cur<0?'Bag empty':tr(DEFS[st.cur].n));
   if(AUTO.on)info=AUTO.idle?'View complete. Pan into the fog to grow more.':'Auto building. '+AUTO.n+' tiles placed this run.';
-  else if(st.over)info='Run over. '+P().score+' points.';
+  else if(st.over)info=(st.players.length>1?'Game over.':'Run over. '+P().score+' points.');
   else if(P().npc)info+='. Thinking...';
-  else if(NET.on&&!myTurn())info=(NET.v?pname(st.turn)+' is placing: '+tr(DEFS[st.cur].n):'Waiting for the room to start');
+  else if(NET.on&&!myTurn())info=(NET.v?pname(st.turn)+' is placing: '+(st.cur<0?'':tr(DEFS[st.cur].n)):'Waiting for the room to start');
   else if(!sel)info+=(NET.on?'. Your turn, tap':'. Tap')+' a glowing square.';
   document.getElementById('info').textContent=info;
   document.getElementById('stats').textContent=tr('Map skin '+(VIEW.skin[0].toUpperCase()+VIEW.skin.slice(1))+'. Landmarks '+((st.landmarks||[]).length)+'. Tiles placed '+st.placed+'. Districts sealed '+st.cities+'. Lanes closed '+st.roads+'.');
@@ -1955,8 +2035,9 @@ document.getElementById('newBtn').onclick=function(){
   if(NET.on){ // GREEN PHONE EDIT: online, only the room creator can start a fresh map for the room
     if(NET.seat!==0||!NET.v){toast('Only the room creator can start a new map');return;}
     newGame(0,0,menuSkin,{mode:'marathon',npc:NET.seats.map(function(x){return x.bot||x.open;}),restart:true});
-  }else newGame(menuN,menuB,menuSkin,{mode:menuMode});
-  menu.classList.remove('show');toast(menuMode==='heart'&&!NET.on?'Heart Zone started':'New map started');
+    toast('New map started');
+  }else startMode(menuMode,menuN,menuB);
+  menu.classList.remove('show');
 };
 selRow('bcount',function(b){menuB=+b.dataset.n;});
 selRow('pcount',function(b){menuN=+b.dataset.n;});
@@ -1968,9 +2049,22 @@ selRow('mcount',function(b){
   if(st.mode===menuMode)return;
   if(AUTO.on)setAuto(0);if(npcTimer){clearTimeout(npcTimer);npcTimer=null;}
   save();
-  if(!loadExact(menuMode))newGame(1,0,menuSkin,{mode:menuMode});
+  if(!loadExact(menuMode)||(menuMode==='daily'&&st.day!==todayKey()))startMode(menuMode,menuN,menuB);
   applyView();ui();
 });
+// GREEN PHONE EDIT: start a fresh game in a mode. Daily uses the Pacific date as the seed.
+function todayKey(){try{return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}catch(e){return new Date().toISOString().slice(0,10);}}
+function hashStr(t){var h=2166136261;for(var i=0;i<t.length;i++){h^=t.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
+function startMode(m,n,b){
+  if(AUTO.on)setAuto(0);if(npcTimer){clearTimeout(npcTimer);npcTimer=null;}
+  if(m==='daily'){
+    var day=todayKey(),pr=lsGet('tiletopia_daily_done')===day;
+    newGame(1,0,menuSkin,{mode:'daily',seed:hashStr('tiletopia-'+day),day:day,practice:pr});
+    toast('Daily Challenge '+day+(pr?', practice run':''));return;
+  }
+  newGame(n||1,b||0,menuSkin,{mode:m});
+  toast((MODES[m]||MODES.marathon).name+(m==='sprint'?' ready, the clock starts with your first move':' started'));
+}
 function loadExact(mode){try{var s=JSON.parse(localStorage.getItem(saveKey(mode)));if(!s||!s.b)return false;}catch(e){return false;}return load(mode);}
 
 function esc(t){return String(t).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -2136,26 +2230,64 @@ function lobbyUi(){
 }
 
 // ---------- GREEN PHONE EDIT: results and leaderboards ----------
-var overEl=document.getElementById('over'),boardPeriod='all',lastRunId=lsGet('tiletopia_lastrun')||'';
-selRow('bperiod',function(b){boardPeriod=b.dataset.p;showBoard('heart');});
-document.getElementById('againBtn').onclick=function(){overEl.classList.remove('show');newGame(1,0,menuSkin,{mode:'heart'});toast('Heart Zone started');};
+var overEl=document.getElementById('over'),boardPeriod='all',boardMode='heart',lastRunId=lsGet('tiletopia_lastrun')||'';
+selRow('bperiod',function(b){boardPeriod=b.dataset.p;showBoard(boardMode);});
+selRow('bmode',function(b){boardMode=b.dataset.m;showBoard(boardMode);});
+document.getElementById('againBtn').onclick=function(){
+  overEl.classList.remove('show');
+  var m=st&&st.mode&&st.mode!=='marathon'?st.mode:boardMode;
+  if(NET.on){ // GREEN PHONE EDIT: in a room only the creator starts the next map
+    if(NET.seat!==0){toast('Only the room creator can start a new map');return;}
+    newGame(0,0,menuSkin,{mode:st.mode,npc:NET.seats.map(function(x){return x.bot||x.open;}),restart:true});return;
+  }
+  var hum=st.players.filter(function(p){return !p.npc;}).length,bots=st.players.length-hum;
+  startMode(m,hum,bots);
+};
 document.getElementById('overMenu').onclick=function(){overEl.classList.remove('show');ui();menu.classList.add('show');};
 document.getElementById('scoresBtn').onclick=function(){menu.classList.remove('show');showOver(true);};
 function runRec(){return {road:st.rec.road.n,city:st.rec.city.n,river:st.rec.river.n,meadow:(st.rec.meadow||{n:0}).n};}
+function rankedRun(){return MI().ranked&&st.players.length===1&&!NET.on&&!st.practice;}
+function runPayload(){
+  return {mode:st.mode,score:st.players[0].score,tiles:st.placed,ms:Math.min(gclock(),st.mode==='sprint'?SPRINT_MS:1e9),seed:String(st.day||st.seed),rec:runRec()};
+}
 function gameOver(){
   if(st.sub)return showOver(false);
-  st.sub=true;save();
+  st.sub=true;
+  if(rankedRun())queueRun(runPayload());
+  if(st.mode==='daily'&&!st.practice)lsSet('tiletopia_daily_done',st.day);
+  save();
   playChimes([],true);
-  queueRun({mode:'heart',score:st.players[0].score,tiles:st.placed,ms:Date.now()-(st.t0||Date.now()),seed:String(st.seed),rec:runRec()});
   showOver(false);flushRuns();
 }
+function overTitle(){
+  if(st.mode==='heart')return 'Out of hearts';
+  if(st.mode==='sprint')return 'Time up';
+  if(MI().bag)return 'The bag is empty';
+  return 'Game over';
+}
 function showOver(boardOnly){
-  document.getElementById('overTitle').textContent=boardOnly?'Heart Zone scores':'Out of hearts';
-  var r=st&&st.mode==='heart'?runRec():null;
-  document.getElementById('overStats').textContent=boardOnly||!r?'':tr('Score '+st.players[0].score+'. Tiles placed '+st.placed+'. Longest Road '+r.road+', Biggest Castle '+r.city+', Longest River '+r.river+', Biggest Meadow '+r.meadow+'.');
+  var m=!boardOnly&&st&&MODES[st.mode]&&MODES[st.mode].ranked?st.mode:boardMode;
+  boardMode=m;markSel('bmode','m',m);
+  document.getElementById('overTitle').textContent=boardOnly?'Scores':overTitle();
+  var txt='';
+  if(!boardOnly&&st){
+    var r=runRec();
+    if(st.players.length>1){
+      var order=st.players.map(function(p,i){return i;}).sort(function(x,y){return st.players[y].score-st.players[x].score;});
+      txt=order.map(function(i,n){return (n+1)+'. '+pname(i)+' '+st.players[i].score;}).join('. ')+'. ';
+    }else txt='Score '+st.players[0].score+'. ';
+    txt+='Tiles placed '+st.placed+'. ';
+    if(st.fs)txt+='End of bag: open features '+st.fs.open+', unfinished cores '+st.fs.cores+', open meadows '+st.fs.meadows+', record bonuses '+st.fs.records+'. ';
+    txt+='Longest Road '+r.road+', Biggest Castle '+r.city+', Longest River '+r.river+', Biggest Meadow '+r.meadow+'.';
+    if(st.practice)txt+=' Practice run, not ranked.';
+    else if(MI().ranked&&st.players.length>1&&!NET.on)txt+=' Games with more than one player are not ranked.';
+  }
+  document.getElementById('overStats').textContent=tr(txt);
   var pend=(lsGet('tiletopia_pending')||'[]').length>2;
   document.getElementById('overRank').textContent=boardOnly||!pend?'':serverHost()?'Sending your score...':'Your score is saved on this phone and goes on the board once the server is set up.';
-  overEl.classList.add('show');showBoard('heart');
+  var ag=document.getElementById('againBtn');ag.style.display=boardOnly?'none':'';
+  ag.textContent='New '+(MODES[st&&st.mode]||MODES[m]).name;
+  overEl.classList.add('show');showBoard(m);
 }
 function queueRun(run){
   var q=[];try{q=JSON.parse(lsGet('tiletopia_pending')||'[]');}catch(e){}
@@ -2172,7 +2304,7 @@ function flushRuns(){
       var st2=a[0],j=a[1];
       if(st2===429){setTimeout(flushRuns,6000);return;}
       q.shift();lsSet('tiletopia_pending',JSON.stringify(q));
-      if(st2===200){lastRunId=j.id;lsSet('tiletopia_lastrun',j.id);document.getElementById('overRank').textContent='Rank '+j.rank+' of '+j.total+' all time.';showBoard('heart');}
+      if(st2===200){lastRunId=j.id;lsSet('tiletopia_lastrun',j.id);document.getElementById('overRank').textContent='Rank '+j.rank+' of '+j.total+(run.mode==='daily'?' today.':' all time.');showBoard(boardMode);}
       else document.getElementById('overRank').textContent='Score not accepted: '+(j.error||st2);
       if(q.length)setTimeout(flushRuns,6000);
     })
@@ -2182,7 +2314,8 @@ function showBoard(mode){
   var el=document.getElementById('boardList');
   if(!serverHost()){el.innerHTML='';return;}
   el.innerHTML='<div class="stats">Loading board...</div>';
-  fetch(httpUrl('/board?mode='+mode+'&period='+boardPeriod+'&n=10')).then(function(r){return r.json();}).then(function(j){
+  document.getElementById('bperiod').style.display=mode==='daily'?'none':'';
+  fetch(httpUrl('/board?mode='+mode+'&period='+(mode==='daily'?'day&day='+todayKey():boardPeriod)+'&n=10')).then(function(r){return r.json();}).then(function(j){
     if(!j.rows||!j.rows.length){el.innerHTML='<div class="stats">No scores yet.</div>';return;}
     el.innerHTML=j.rows.map(function(r,i){return '<div class="brow'+(r.id===lastRunId?' me':'')+'"><span>'+(i+1)+'. '+esc(r.name)+'</span><span>'+r.score+' pts, '+r.tiles+' tiles</span></div>';}).join('');
   }).catch(function(){el.innerHTML='<div class="stats">Board unavailable right now.</div>';});
@@ -2197,6 +2330,13 @@ flushRuns();
 (function(){ // GREEN PHONE EDIT: rejoin the last room automatically if it is less than a day old
   try{var r=JSON.parse(lsGet('tiletopia_room')||'null');if(r&&r.code&&Date.now()-r.at<86400000&&serverHost()){NET.code=r.code;netOpen();}else rememberRoom();}catch(e){}
 })();
+// GREEN PHONE EDIT: hook used by the score server to replay runs and by automated tests. Normal pages never define it.
+if(typeof window.__ttHook==='function')window.__ttHook({
+  st:function(){return st;},fits:function(){return fits;},
+  pick:function(k,r){sel=k;st.rot=r;},place:place,hold:hold,reroll:reroll,hzTimeout:hzTimeout,
+  newGame:newGame,startMode:startMode,serialize:serialize,finishGame:finishGame,gameOver:gameOver,
+  setClock:function(v){REPLAY_CLK=v;},MODES:MODES,RULES_V:RULES_V
+});
 requestAnimationFrame(frame);
 })();
 </script>
