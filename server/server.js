@@ -291,6 +291,12 @@ function weekKey(d) {
   return y + '-W' + String(w).padStart(2, '0');
 }
 const lbKey = (mode, period) => 'tt:lb:' + mode + ':' + (period === 'week' ? 'wk:' + weekKey(new Date()) : 'all');
+// GREEN PHONE EDIT: Daily Challenge boards are keyed by the Pacific date the bag was seeded from.
+const dayKey = day => 'tt:lb:daily:day:' + day;
+function pacificDay(offsetDays) {
+  const d = new Date(Date.now() + (offsetDays || 0) * 86400000);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+}
 const lastPost = new Map();
 
 async function postScore(body) {
@@ -302,6 +308,12 @@ async function postScore(body) {
   if (mode === 'sprint' && ms > 6 * 60 * 1000) return [400, { error: 'Sprint ran too long' }];
   const now = Date.now();
   if (now - (lastPost.get(token) || 0) < 5000) return [429, { error: 'Slow down' }];
+  let day = null;
+  if (mode === 'daily') {
+    day = String(body.seed || '');
+    if (![pacificDay(-1), pacificDay(0), pacificDay(1)].includes(day)) return [400, { error: 'That Daily Challenge is closed' }];
+    if (!(await store.setnx('tt:dailydone:' + day + ':' + token, '1', 3 * 86400))) return [409, { error: 'Already played the Daily Challenge for ' + day }];
+  }
   lastPost.set(token, now);
   const id = now.toString(36) + crypto.randomBytes(3).toString('hex');
   const rec = body.rec && typeof body.rec === 'object' ? body.rec : {};
@@ -311,6 +323,12 @@ async function postScore(body) {
     rec: { road: rec.road | 0, city: rec.city | 0, river: rec.river | 0, meadow: rec.meadow | 0 }
   };
   await store.set('tt:run:' + id, JSON.stringify(run));
+  if (day) {
+    const dk = dayKey(day);
+    await store.zadd(dk, score, id); await store.expire(dk, 40 * 86400);
+    const dr = await store.zrank(dk, id);
+    return [200, { id, rank: dr == null ? null : dr + 1, total: await store.zcard(dk), day }];
+  }
   const all = lbKey(mode, 'all'), wk = lbKey(mode, 'week');
   await store.zadd(all, score, id);
   await store.zadd(wk, score, id); await store.expire(wk, 40 * 86400);
@@ -319,9 +337,13 @@ async function postScore(body) {
 }
 async function getBoard(q) {
   const mode = q.get('mode'); if (!MODES.includes(mode)) return [400, { error: 'Unknown mode' }];
-  const period = q.get('period') === 'week' ? 'week' : 'all';
   const n = Math.max(1, Math.min(50, +q.get('n') || 10));
-  const top = await store.ztop(lbKey(mode, period), n);
+  let period = q.get('period') === 'week' ? 'week' : 'all', key;
+  if (mode === 'daily') {
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(q.get('day') || '') ? q.get('day') : pacificDay(0);
+    period = 'day:' + day; key = dayKey(day);
+  } else key = lbKey(mode, period);
+  const top = await store.ztop(key, n);
   const rows = [];
   for (const e of top) {
     const raw = await store.get('tt:run:' + e.m); if (!raw) continue;
