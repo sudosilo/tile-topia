@@ -13,6 +13,7 @@
 const http = require('http');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
+const replayer = require('./replay');   // GREEN PHONE EDIT: score replay
 
 const PORT = +process.env.PORT || 8080;
 const ROOM_TTL = 24 * 60 * 60;          // rooms expire one day after the last write
@@ -306,6 +307,17 @@ async function postScore(body) {
   if (score < 0 || score > 10000000 || tiles < 1 || tiles > 100000) return [400, { error: 'Score out of range' }];
   if (score > tiles * 80) return [400, { error: 'Score too high for that many tiles' }];
   if (mode === 'sprint' && ms > 6 * 60 * 1000) return [400, { error: 'Sprint ran too long' }];
+  // GREEN PHONE EDIT: replay the move log in the server's copy of the game. A run from a different
+  // game version can't be checked, so it is kept but marked unverified.
+  if (!Array.isArray(body.log) || !body.log.length) return [400, { error: 'Update the game to post scores' }];
+  let verified = false;
+  if (body.rv === replayer.RULES_V) {
+    let r;
+    try { r = replayer.replay({ mode, seed: body.seed, log: body.log }); } catch (e) { r = { ok: false, error: 'Replay failed: ' + e.message }; }
+    if (!r.ok) return [400, { error: r.error }];
+    if (r.score !== score || r.tiles !== tiles) return [400, { error: 'Score did not match the replay (' + r.score + ' points, ' + r.tiles + ' tiles)' }];
+    verified = true;
+  } else console.log('unverified run, game version', body.rv, 'server has', replayer.RULES_V);
   const now = Date.now();
   if (now - (lastPost.get(token) || 0) < 5000) return [429, { error: 'Slow down' }];
   let day = null;
@@ -319,7 +331,7 @@ async function postScore(body) {
   const rec = body.rec && typeof body.rec === 'object' ? body.rec : {};
   const run = {
     id, name: cleanName(body.name), mode, score, tiles, ms, at: now,
-    seed: String(body.seed || '').slice(0, 32), room: body.room ? String(body.room).slice(0, 8) : '',
+    seed: String(body.seed || '').slice(0, 32), room: body.room ? String(body.room).slice(0, 8) : '', verified,
     rec: { road: rec.road | 0, city: rec.city | 0, river: rec.river | 0, meadow: rec.meadow | 0 }
   };
   await store.set('tt:run:' + id, JSON.stringify(run));
@@ -327,13 +339,13 @@ async function postScore(body) {
     const dk = dayKey(day);
     await store.zadd(dk, score, id); await store.expire(dk, 40 * 86400);
     const dr = await store.zrank(dk, id);
-    return [200, { id, rank: dr == null ? null : dr + 1, total: await store.zcard(dk), day }];
+    return [200, { id, rank: dr == null ? null : dr + 1, total: await store.zcard(dk), day, verified }];
   }
   const all = lbKey(mode, 'all'), wk = lbKey(mode, 'week');
   await store.zadd(all, score, id);
   await store.zadd(wk, score, id); await store.expire(wk, 40 * 86400);
   const rank = await store.zrank(all, id);
-  return [200, { id, rank: rank == null ? null : rank + 1, total: await store.zcard(all) }];
+  return [200, { id, rank: rank == null ? null : rank + 1, total: await store.zcard(all), verified }];
 }
 async function getBoard(q) {
   const mode = q.get('mode'); if (!MODES.includes(mode)) return [400, { error: 'Unknown mode' }];
@@ -348,7 +360,7 @@ async function getBoard(q) {
   for (const e of top) {
     const raw = await store.get('tt:run:' + e.m); if (!raw) continue;
     const r = JSON.parse(raw);
-    rows.push({ id: r.id, name: r.name, score: r.score, tiles: r.tiles, at: r.at, rec: r.rec });
+    rows.push({ id: r.id, name: r.name, score: r.score, tiles: r.tiles, at: r.at, rec: r.rec, verified: !!r.verified });
   }
   return [200, { mode, period, rows }];
 }
@@ -364,13 +376,13 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   const reply = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
-  if (req.method === 'GET' && url.pathname === '/') return reply(200, { ok: true, store: store.kind, rooms: rooms.size });
+  if (req.method === 'GET' && url.pathname === '/') return reply(200, { ok: true, store: store.kind, rooms: rooms.size, rules: replayer.RULES_V });
   if (req.method === 'GET' && url.pathname === '/board') {
     return getBoard(url.searchParams).then(r => reply(r[0], r[1]), e => reply(500, { error: e.message }));
   }
   if (req.method === 'POST' && url.pathname === '/score') {
     let body = '';
-    req.on('data', c => { body += c; if (body.length > 10000) req.destroy(); });
+    req.on('data', c => { body += c; if (body.length > 512 * 1024) req.destroy(); });
     req.on('end', () => {
       let j; try { j = JSON.parse(body); } catch (e) { return reply(400, { error: 'Bad JSON' }); }
       postScore(j).then(r => reply(r[0], r[1]), e => reply(500, { error: e.message }));
