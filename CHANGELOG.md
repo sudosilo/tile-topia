@@ -1,3 +1,5 @@
+2026-11-24, v2026.11.24. Added online rooms so several phones can play one map. One player creates a room with a four letter code, others join it, and open seats become bots. Only the player whose turn it is can move, other phones watch the tile being turned and placed, phones that drop reconnect on their own, and a player away for two minutes is handed to a bot until they return. Added Heart Zone, a solo ranked mode with hearts, a 15 second clock, and a combo multiplier, plus a score board. The tile bag now draws from a seed. Added the room and score server in the server folder for Railway.
+
 2026-11-19, v2026.11.19b. Added a War skin with an army map, trenches, bases, HQs, and marching soldiers. Added West and Bunker skins. Added Meadow fields that score points, with a Biggest Meadow record. Each map now keeps its skin, with heart and strip landmarks, and city towers grow with district size.
 
 2026-11-19, v2026.11.19. Added an Auto build mode that places tiles in spots that avoid gaps. It builds only inside the view and leaves fog beyond it. Added connector tiles for every edge combination, and holes now fill automatically.

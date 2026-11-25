@@ -1,0 +1,17 @@
+{
+  "name": "tile-topia-server",
+  "version": "2026.11.24",
+  "private": true,
+  "description": "Room and leaderboard server for Tile-topia. GREEN PHONE EDIT",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ioredis": "^5.4.1",
+    "ws": "^8.18.0"
+  }
+}

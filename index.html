@@ -118,12 +118,28 @@ body.bk .slot canvas{border-color:#9a927f;background:#e4e0d8}body.bk #cur{border
 body.bk #toast{color:#2f3540;border:2px solid #d4a72c;background:#f2eee6;box-shadow:none;border-radius:3px}
 body.bk .ov{background:rgba(228,224,216,.97)}body.bk .card{border:2px solid #3f6fb0;box-shadow:none;background:#f2eee6;border-radius:4px}
 body.bk .card h2{background:none;color:#2f5a96;-webkit-text-fill-color:#2f5a96}body.bk .card p,body.bk .stats{color:#2f3540}
+/* GREEN PHONE EDIT: online lobby, Heart Zone display, results */
+input.tin{font:inherit;font-size:16px;font-weight:700;padding:8px 10px;min-height:44px;border:1px solid #9fdcf0;border-radius:4px;background:#fff;color:inherit;flex:1;min-width:0;text-transform:uppercase}
+input.tin.nm{text-transform:none}
+#roomCode{font-size:44px;font-weight:700;letter-spacing:.25em;text-align:center;margin:4px 0 8px}
+.seat{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;margin-bottom:6px;border:1px solid #ccd;border-radius:4px;font-weight:700;font-size:14px;background:#fff}
+.seat small{font-weight:600;opacity:.7}
+#hud{display:none;align-items:center;gap:8px;margin-bottom:6px;font-weight:700;font-size:14px}
+#hud.show{display:flex}
+#hearts{color:#d2304a;letter-spacing:.08em;white-space:nowrap}
+#hclock{flex:1;height:8px;border-radius:4px;background:rgba(0,0,0,.08);overflow:hidden}
+#hclock div{height:100%;width:100%;background:#2e9a52;transition:width .2s linear}
+#hcombo{white-space:nowrap}
+.brow{display:flex;justify-content:space-between;padding:6px 8px;border-bottom:1px solid rgba(0,0,0,.08);font-size:13px}
+.brow.me{font-weight:700;background:rgba(0,194,238,.08)}
+.pl.away{opacity:.5}
 </style>
 </head>
 <body>
 <canvas id="cv"></canvas>
 <div id="top"><div id="players" style="display:flex;gap:6px;flex-wrap:wrap"></div><button id="autoBtn" class="tb">Auto</button><button id="viewBtn" class="tb">Iso</button><button id="menuBtn">Menu</button><div id="rec"></div></div>
 <div id="bottom">
+  <div id="hud"><span id="hearts"></span><div id="hclock"><div></div></div><span id="hcombo"></span></div>
   <div id="info"></div>
   <div id="row">
     <div class="slot"><canvas id="cur" width="76" height="76"></canvas>Now</div>
@@ -144,6 +160,11 @@ body.bk .card h2{background:none;color:#2f5a96;-webkit-text-fill-color:#2f5a96}b
   <p>Landmarks: seal a 4 tile district shaped like a heart (two single edge caps beside two corner pieces) to raise a Heart landmark worth 25. Seal a district that runs as one long chain of 4 or more corner or band pieces to lay a Strip landmark worth 2 per tile. In War it becomes an airstrip with planes. In City the towers grow taller the bigger the district and the closer to its center.</p><p>Special tiles: Spire makes its district worth 3 per tile. Relay doubles its lane. Crypto vault pays 5 on the spot. Power core gives 2 rerolls. Sealing a district of 3 or more tiles earns a reroll. Hold stashes a tile for later.</p>
   <p>Auto builds the map by itself, choosing spots that keep future tiles placeable so gaps stay rare. It only builds inside what you are looking at. When the view is full it waits. Pan into the fog to grow more. Tap Auto again for max speed, and once more to stop.</p><p>With more than one player, a finished feature pays whoever laid the most tiles in it. Ties all get paid. Each tile carries a faint outline in the color of whoever placed it. Bots take their turns on their own.</p><p>Finishing something plays one chime per tile in it, rising in pitch, with a different voice for lanes, districts, coolant and cores. Finishing the biggest of its kind at more than 10 tiles sets off a record celebration.</p>
   <div class="stats" id="stats"></div>
+  <p style="margin-bottom:4px"><b>Your name</b></p>
+  <div class="mrow" style="margin-bottom:12px"><input id="nameIn" class="tin nm" maxlength="16" placeholder="Player"></div>
+  <p style="margin-bottom:4px"><b>Mode</b></p>
+  <div class="pc" id="mcount"><button data-m="marathon" class="sel">Marathon</button><button data-m="heart">Heart Zone</button></div>
+  <p>Heart Zone is a solo ranked run. You get 3 hearts and 15 seconds per tile. Running out of time, drawing a tile with no spot, or going 3 tiles in a row without finishing anything costs a heart. Finishing things on back to back turns builds a combo that multiplies points, and sealing a district of 8 tiles or more wins a heart back, up to 5. The run ends at zero hearts.</p>
   <p style="margin-bottom:4px"><b>New game players</b></p>
   <div class="pc" id="pcount"><button data-n="1" class="sel">1</button><button data-n="2">2</button><button data-n="3">3</button><button data-n="4">4</button></div>
   <p style="margin-bottom:4px"><b>Map skin (locked for the whole map)</b></p>
@@ -151,7 +172,36 @@ body.bk .card h2{background:none;color:#2f5a96;-webkit-text-fill-color:#2f5a96}b
   <p style="margin-bottom:4px"><b>Bot opponents</b></p>
   <div class="pc" id="bcount"><button data-n="0" class="sel">0</button><button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button></div>
   <div class="mrow"><button id="newBtn">New game</button><button id="resumeBtn" class="primary">Resume</button></div>
+  <div class="mrow"><button id="onlineBtn">Online</button><button id="scoresBtn">Scores</button></div>
   <div class="mrow"><button id="centerBtn">Center map</button><button id="sndBtn">Sound on</button></div>
+</div></div>
+<div id="lobby" class="ov"><div class="card">
+  <h2>Online</h2>
+  <div id="lbOut">
+    <p>Play on separate phones. One person creates a room and shares the four letter code. Seats nobody joins become bots when the game starts.</p>
+    <p style="margin-bottom:4px"><b>Seats</b></p>
+    <div class="pc" id="lseats"><button data-n="2" class="sel">2</button><button data-n="3">3</button><button data-n="4">4</button></div>
+    <div class="mrow"><button id="createBtn" class="primary">Create room</button></div>
+    <p style="margin:16px 0 4px"><b>Join with a code</b></p>
+    <div class="mrow"><input id="codeIn" class="tin" maxlength="4" placeholder="ABCD" autocomplete="off"><button id="joinBtn">Join</button></div>
+  </div>
+  <div id="lbIn" style="display:none">
+    <div id="roomCode"></div>
+    <div class="stats" id="roomHint"></div>
+    <div id="seatList"></div>
+    <div class="mrow"><button id="startBtn" class="primary">Start game</button></div>
+    <div class="mrow"><button id="leaveBtn">Leave room</button></div>
+  </div>
+  <div class="stats" id="lstat" style="margin-top:10px"></div>
+  <div class="mrow"><button id="lobbyClose">Close</button></div>
+</div></div>
+<div id="over" class="ov"><div class="card">
+  <h2 id="overTitle">Out of hearts</h2>
+  <div class="stats" id="overStats"></div>
+  <div class="stats" id="overRank"></div>
+  <div class="pc" id="bperiod"><button data-p="all" class="sel">All time</button><button data-p="week">This week</button></div>
+  <div id="boardList"></div>
+  <div class="mrow"><button id="againBtn" class="primary">New Heart Zone</button><button id="overMenu">Menu</button></div>
 </div></div>
 <script>
 (function(){
@@ -171,6 +221,10 @@ var flashes=[],placeAnim=null;
 var PCOL=['#d2492f','#2f72c9','#2e9a52','#a347b8'];
 var PNAME=['Red','Blue','Green','Purple'];
 var SAVE_KEY='tiletopia_v1';
+// GREEN PHONE EDIT: Railway server host, no protocol. Fill in once the Railway service has its domain.
+// Testing override: open the game with ?server=host to store a different host on this device, ?server=clear to drop it.
+var SERVER_URL='';
+var HZ_CLOCK=15,HZ_START=3,HZ_MAX=5,HZ_STALL=3,HZ_BIG=8;
 
 var DEFS=[
 {e:'FFRF',g:[[2]],m:1,w:2,n:'Server core on a data lane'},
@@ -229,7 +283,13 @@ var DEFS=[
 })();
 DEFS.forEach(function(d,i){d.i=i;d.sh=d.sh||0;});
 var TOTALW=DEFS.reduce(function(a,d){return a+d.w;},0);
-function randDef(){var r=Math.random()*TOTALW;for(var i=0;i<DEFS.length;i++){r-=DEFS[i].w;if(r<0)return i;}return 0;}
+// GREEN PHONE EDIT: the tile bag draws from a seeded generator kept in the game state, so a seed replays the same bag.
+function newSeed(){return (Math.random()*4294967296)>>>0;}
+function bagRand(){
+  if(!st||st.rs==null)return Math.random();
+  var t=st.rs=(st.rs+0x6D2B79F5)|0;t=Math.imul(t^t>>>15,1|t);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;
+}
+function randDef(){var r=bagRand()*TOTALW;for(var i=0;i<DEFS.length;i++){r-=DEFS[i].w;if(r<0)return i;}return 0;}
 function et(d,r,w){return d.e[(w-r+4)%4];}
 function wg(d,r){return d.g.map(function(g){return g.map(function(b){return (b+r)%4;});});}
 function K(x,y){return x+','+y;}
@@ -239,17 +299,25 @@ var dpr=Math.max(1,window.devicePixelRatio||1),W=0,H=0;
 var cam={x:S/2,y:S/2,s:1};
 var st=null,fits=new Map(),sel=null,popups=[],dirty=true,menuN=1,menuB=0,comps=[],celebs=[],npcTimer=null;
 
-function newGame(n,b,skin){
-  b=b||0;if(n+b>4)b=4-n;
+// GREEN PHONE EDIT: opt.mode picks the mode, opt.npc lists which seats are bots (used by online rooms).
+function newGame(n,b,skin,opt){
+  opt=opt||{};b=b||0;
+  var mode=opt.mode||'marathon';
+  if(mode==='heart'){n=1;b=0;}
+  if(opt.npc){n=opt.npc.length;b=0;}
+  if(n+b>4)b=4-n;
   if(skin)VIEW.skin=skin;HF=new Map();
-  st={board:new Map(),players:[],q:[randDef(),randDef(),randDef()],cur:randDef(),rot:0,turn:0,scored:new Set(),scoredM:new Set(),frontier:new Set(),placed:0,cities:0,roads:0,last:'0,0',rec:{road:{n:0,p:-1},city:{n:0,p:-1},river:{n:0,p:-1},meadow:{n:0,p:-1}}};
-  for(var i=0;i<n+b;i++)st.players.push({score:0,rerolls:3,hold:-1,ms:0,npc:i>=n});
+  var seed=opt.seed!=null?opt.seed>>>0:newSeed();
+  st={board:new Map(),players:[],q:[],cur:0,rot:0,turn:0,scored:new Set(),scoredM:new Set(),frontier:new Set(),placed:0,cities:0,roads:0,last:'0,0',rec:{road:{n:0,p:-1},city:{n:0,p:-1},river:{n:0,p:-1},meadow:{n:0,p:-1}},mode:mode,seed:seed,rs:seed|0,t0:Date.now(),over:false};
+  st.q=[randDef(),randDef(),randDef()];st.cur=randDef();
+  if(mode==='heart')st.hz={hearts:HZ_START,combo:0,stall:0,turnAt:Date.now()};
+  for(var i=0;i<n+b;i++)st.players.push({score:0,rerolls:3,hold:-1,ms:0,npc:opt.npc?!!opt.npc[i]:i>=n});
   st.board.set('0,0',{t:3,r:0,p:-1});
   st.skin=VIEW.skin;st.landmarks=[];rebuildLMK();applyView();
   addFrontier(0,0);
   cam={x:S/2,y:S/2,s:1};
   sel=null;
-  recompute();ensurePlaceable();save();ui();maybeNPC();
+  recompute();ensurePlaceable();commitMove(opt.restart);ui();maybeNPC();
 }
 var TR={graphite:[['Server Core','Monastery'],['Server core','Monastery'],['Data lane','Road'],['data lane','road'],['Relay lane','Inn road'],['Spire district','Cathedral city'],['Districts','Cities'],['District','City'],['district','city'],['Lanes','Roads'],['Lane','Road'],['lane','road'],['Coolant pool','Lake'],['Coolant','River'],['coolant','river'],['chips','shields'],['chip','shield'],['Megablock','Walled city'],['junction','crossroads'],['Spire','Cathedral'],['Relay','Inn'],['Crypto vault','Gold mine'],['Crypto','Gold'],['Power core','Star'],['sealed','walled'],['Sealing','Walling']],
 west:[['Server Core','Mission'],['Server core','Mission'],['Data lane','Wagon trail'],['data lane','wagon trail'],['Relay lane','Stage route'],['Spire district','Fort town'],['Districts','Towns'],['District','Town'],['district','town'],['Lanes','Trails'],['Lane','Trail'],['lane','trail'],['Coolant pool','Watering hole'],['Coolant','Creek'],['coolant','creek'],['chips','horseshoes'],['chip','horseshoe'],['Megablock','Boomtown'],['junction','crossing'],['Spire','Fort'],['Relay','Saloon'],['Crypto vault','Gold mine'],['Crypto','Gold'],['Power core','Sheriff star'],['sealed','fenced'],['Sealing','Fencing'],['Meadow','Prairie']],
@@ -273,7 +341,12 @@ function trRules(){
 function tr(str){var R=trRules();if(!R.length)return str;
   var marks=[];R.forEach(function(p){str=str.replace(p[0],function(){marks.push(p[1]);return '\u0001'+(marks.length-1)+'\u0002';});});
   return str.replace(/\u0001(\d+)\u0002/g,function(m,i){return marks[+i];});}
-function pname(i){return PNAME[i]+(st.players[i]&&st.players[i].npc?' Bot':'');}
+function pname(i){
+  // GREEN PHONE EDIT: online seats show the name the player typed
+  var npc=st.players[i]&&st.players[i].npc;
+  if(NET.on&&NET.seats[i]&&!npc&&NET.seats[i].name)return NET.seats[i].name+(i===NET.seat?' (you)':'');
+  return PNAME[i]+(npc?' Bot':'');
+}
 function addFrontier(x,y){
   st.frontier.delete(K(x,y));
   for(var e=0;e<4;e++){var nx=x+DIRS[e][0],ny=y+DIRS[e][1],k=K(nx,ny);if(!st.board.has(k))st.frontier.add(k);}
@@ -299,7 +372,10 @@ function recompute(){
 function nextTile(){var t=st.q.shift();st.q.push(randDef());return t;}
 function ensurePlaceable(){
   var tries=0;
-  while(fits.size===0&&tries<60){toast('No spot for that one, tossed');st.cur=nextTile();st.rot=0;recompute();tries++;}
+  while(fits.size===0&&tries<60){
+    toast('No spot for that one, tossed');st.cur=nextTile();st.rot=0;recompute();tries++;
+    if(st.mode==='heart'&&!st.over)loseHeart('No spot for that tile');
+  }
 }
 function P(){return st.players[st.turn];}
 
@@ -332,6 +408,7 @@ function winners(tiles){
   return out.length?out:[st.turn];
 }
 function award(list,pts,label,wx,wy){
+  if(st.mode==='heart'&&st.hz)pts=Math.round(pts*hzMult()); // GREEN PHONE EDIT: Heart Zone combo
   list.forEach(function(p){st.players[p].score+=pts;});
   if(AUTO.on===2)return;
   popups.push({x:wx,y:wy,text:tr(label)+' +'+pts,c:st.players.length>1?PCOL[list[0]]:COL.popC,t:performance.now()});
@@ -402,7 +479,7 @@ function scanRecords(){
   });
 }
 function place(){
-  if(!sel)return;
+  if(!sel||st.over)return;
   var list=fits.get(sel);
   if(!list||list.indexOf(st.rot)<0){toast('Does not fit that way');return;}
   var p=sel.split(','),x=+p[0],y=+p[1];
@@ -412,10 +489,50 @@ function place(){
   scoreAfter(x,y);
   playChimes(comps);
   recordsAt(x,y,true);
+  if(st.mode==='heart')hzAfterPlace();
   sel=null;
   st.turn=(st.turn+1)%st.players.length;
   st.cur=nextTile();st.rot=0;
-  recompute();ensurePlaceable();save();ui();maybeNPC();
+  if(st.hz)st.hz.turnAt=Date.now();
+  recompute();if(!st.over)ensurePlaceable();commitMove();ui();maybeNPC();
+  if(st.over)gameOver();
+}
+// GREEN PHONE EDIT: Heart Zone rules
+function hzMult(){return 1+.5*(st.hz?st.hz.combo:0);}
+function hzAfterPlace(){
+  var hz=st.hz,done=comps.length>0;
+  if(done){hz.combo=Math.min(6,hz.combo+1);hz.stall=0;}
+  else{hz.combo=0;hz.stall++;if(hz.stall>=HZ_STALL){hz.stall=0;loseHeart(HZ_STALL+' tiles with nothing finished');}}
+  comps.forEach(function(c){if(c.kind==='C'&&c.n>=HZ_BIG&&hz.hearts<HZ_MAX&&!st.over){hz.hearts++;toast('Big district, heart back');}});
+}
+function loseHeart(why){
+  var hz=st.hz;if(!hz||st.over)return;
+  hz.hearts--;hz.combo=0;
+  toast(why+', lost a heart');
+  if(hz.hearts<=0){hz.hearts=0;st.over=true;}
+}
+var hzLast=0,hzUi=0;
+function hzTick(){
+  var hud=document.getElementById('hud');
+  if(!st||st.mode!=='heart'||!st.hz){if(hud.classList.contains('show'))hud.classList.remove('show');return;}
+  hud.classList.add('show');
+  var now=Date.now(),hz=st.hz,gap=hzLast?now-hzLast:0;hzLast=now;
+  // The clock stops while a menu covers the board or the tab is in the background.
+  if(st.over||document.querySelector('.ov.show')||document.hidden||gap>1000)hz.turnAt+=gap;
+  var left=HZ_CLOCK*1000-(now-hz.turnAt);
+  if(!st.over&&left<=0){
+    loseHeart('Too slow');
+    st.cur=nextTile();st.rot=0;sel=null;hz.turnAt=now;
+    recompute();if(!st.over)ensurePlaceable();save();ui();
+    if(st.over){gameOver();return;}
+    left=HZ_CLOCK*1000;
+  }
+  if(now-hzUi<200)return;hzUi=now;
+  var h='';for(var i=0;i<HZ_MAX;i++)h+=i<hz.hearts?'♥':'♡';
+  document.getElementById('hearts').textContent=h;
+  var bar=document.querySelector('#hclock div'),pct=Math.max(0,Math.min(1,left/(HZ_CLOCK*1000)));
+  bar.style.width=(pct*100)+'%';bar.style.background=pct<.3?'#d2304a':pct<.6?'#e0a020':'#2e9a52';
+  document.getElementById('hcombo').textContent='x'+hzMult()+' '+Math.ceil(Math.max(0,left)/1000)+'s';
 }
 function featPts(f){var n=f.tiles.size;if(f.type==='R')return n*(f.inn?2:1);if(f.type==='C')return (n+f.sh)*(f.cat?3:2);if(f.type==='W')return n*2;return 0;}
 function evalMove(k,x,y,r){
@@ -455,9 +572,11 @@ function npcMove(){
   if(!best)return;
   sel=best[0];st.rot=best[1];place();
 }
+// GREEN PHONE EDIT: online, only the bot runner (lowest connected human seat) plays the bots
+function botsMine(){return !NET.on||(NET.v>0&&NET.botRunner===NET.seat);}
 function maybeNPC(){
-  if(!st||AUTO.on||!P().npc||npcTimer)return;
-  npcTimer=setTimeout(function(){npcTimer=null;if(st&&P().npc)npcMove();},700);
+  if(!st||st.over||AUTO.on||!P().npc||npcTimer||!botsMine())return;
+  npcTimer=setTimeout(function(){npcTimer=null;if(st&&!st.over&&P().npc&&botsMine())npcMove();},700);
 }
 var AC=null;
 function ac(){
@@ -509,7 +628,8 @@ function hold(){
   var pl=P();
   if(pl.hold<0){pl.hold=st.cur;st.cur=nextTile();}
   else{var h=pl.hold;pl.hold=st.cur;st.cur=h;}
-  st.rot=0;sel=null;recompute();ensurePlaceable();save();ui();
+  st.rot=0;sel=null;recompute();ensurePlaceable();commitMove();ui();
+  if(st.over)gameOver();
 }
 function reroll(){
   var pl=P();if(pl.rerolls<=0)return;
@@ -517,27 +637,48 @@ function reroll(){
   if(sel&&!fitsFor(sel))sel=null;
   recompute();
   if(sel&&fits.get(sel))st.rot=fits.get(sel)[0];else sel=null;
-  ensurePlaceable();save();ui();
+  ensurePlaceable();commitMove();ui();netPreview();
+  if(st.over)gameOver();
 }
 function fitsFor(k){return true;}
 
+// GREEN PHONE EDIT: one JSON shape for the local save and for online sync.
+function serialize(){
+  var b=[];st.board.forEach(function(v,k){b.push([k,v.t,v.r,v.p]);});
+  return {b:b,players:st.players,q:st.q,cur:st.cur,rot:st.rot,turn:st.turn,scored:Array.from(st.scored),scoredM:Array.from(st.scoredM),placed:st.placed,cities:st.cities,roads:st.roads,last:st.last,skin:st.skin,landmarks:st.landmarks||[],rec:st.rec,
+    mode:st.mode||'marathon',seed:st.seed,rs:st.rs,t0:st.t0,hz:st.hz||null,over:!!st.over,sub:!!st.sub};
+}
+function deserialize(s){
+  st={board:new Map(),players:s.players,q:s.q,cur:s.cur,rot:s.rot||0,turn:s.turn||0,scored:new Set(s.scored),scoredM:new Set(s.scoredM),frontier:new Set(),placed:s.placed||0,cities:s.cities||0,roads:s.roads||0,last:s.last||'0,0',
+    mode:s.mode||'marathon',seed:s.seed!=null?s.seed:newSeed(),rs:null,t0:s.t0||Date.now(),hz:s.hz||null,over:!!s.over,sub:!!s.sub};
+  st.rs=s.rs!=null?s.rs:(st.seed|0);
+  s.b.forEach(function(a){st.board.set(a[0],{t:a[1],r:a[2],p:a[3]});});
+  st.board.forEach(function(v,k){var p=k.split(',');addFrontierLoad(+p[0],+p[1]);});
+  if(s.rec&&s.rec.meadow)st.rec=s.rec;else scanRecords();
+  st.skin=s.skin||VIEW.skin;VIEW.skin=st.skin;st.landmarks=s.landmarks||[];rebuildLMK();scanHeights();
+}
+function saveKey(mode){return !mode||mode==='marathon'?SAVE_KEY:SAVE_KEY+'_'+mode;}
 function save(){
+  if(NET.on||!st)return; // online games live on the server, the local slots stay untouched
   try{
-    var b=[];st.board.forEach(function(v,k){b.push([k,v.t,v.r,v.p]);});
-    localStorage.setItem(SAVE_KEY,JSON.stringify({b:b,players:st.players,q:st.q,cur:st.cur,rot:st.rot,turn:st.turn,scored:Array.from(st.scored),scoredM:Array.from(st.scoredM),placed:st.placed,cities:st.cities,roads:st.roads,last:st.last,skin:st.skin,landmarks:st.landmarks||[],rec:st.rec,cam:cam}));
+    var o=serialize();o.cam=cam;
+    localStorage.setItem(saveKey(st.mode),JSON.stringify(o));
+    localStorage.setItem('tiletopia_last',st.mode||'marathon');
   }catch(e){}
 }
-function load(){
+function load(mode){
   try{
-    var s=JSON.parse(localStorage.getItem(SAVE_KEY));if(!s||!s.b)return false;
-    st={board:new Map(),players:s.players,q:s.q,cur:s.cur,rot:s.rot||0,turn:s.turn||0,scored:new Set(s.scored),scoredM:new Set(s.scoredM),frontier:new Set(),placed:s.placed||0,cities:s.cities||0,roads:s.roads||0,last:s.last||'0,0'};
-    s.b.forEach(function(a){st.board.set(a[0],{t:a[1],r:a[2],p:a[3]});});
-    st.board.forEach(function(v,k){var p=k.split(',');addFrontierLoad(+p[0],+p[1]);});
-    if(s.rec&&s.rec.meadow)st.rec=s.rec;else scanRecords();
+    if(mode==null){try{mode=localStorage.getItem('tiletopia_last')||'marathon';}catch(e){mode='marathon';}}
+    var s=JSON.parse(localStorage.getItem(saveKey(mode)));if(!s||!s.b)return mode!=='marathon'&&load('marathon');
+    deserialize(s);
     if(s.cam)cam=s.cam;
-    st.skin=s.skin||VIEW.skin;VIEW.skin=st.skin;st.landmarks=s.landmarks||[];rebuildLMK();scanHeights();
-    recompute();ensurePlaceable();return true;
+    if(st.hz)st.hz.turnAt=Date.now();
+    recompute();if(!st.over)ensurePlaceable();return true;
   }catch(e){return false;}
+}
+// The single path every finished action goes through: local save, or a versioned send to the room.
+function commitMove(restart){
+  if(NET.on)netCommit(restart);else save();
 }
 function addFrontierLoad(x,y){
   for(var e=0;e<4;e++){var k=K(x+DIRS[e][0],y+DIRS[e][1]);if(!st.board.has(k))st.frontier.add(k);}
@@ -1517,7 +1658,7 @@ function draw(){
     ctx.globalAlpha=1;
   }
   ctx.setLineDash([6,4]);ctx.lineDashOffset=-t*12;
-  if(!AUTO.on)fits.forEach(function(list,k){
+  if(!AUTO.on&&(!NET.on||myTurn())&&!st.over)fits.forEach(function(list,k){
     var p=k.split(','),x=+p[0],y=+p[1];
     if(x<x0||x>x1||y<y0||y>y1||k===sel)return;
     var v=V(x*S,y*S),on=list.indexOf(st.rot)>=0;
@@ -1674,7 +1815,7 @@ function fogSprite(){
   x.fillStyle=g;x.fillRect(0,0,128,128);FOG={skin:VIEW.skin,c:c};return c;
 }
 var lastF=0;
-function frame(n){requestAnimationFrame(frame);if(n-lastF<30)return;lastF=n;autoStep();draw();}
+function frame(n){requestAnimationFrame(frame);if(n-lastF<30)return;lastF=n;autoStep();hzTick();draw();}
 
 function drawSmall(id,t,r){
   var c=document.getElementById(id),x=c.getContext('2d'),w=c.width;
@@ -1687,7 +1828,8 @@ function ui(){
   var h='';
   st.players.forEach(function(p,i){
     var nm=st.players.length>1?pname(i):'Score';
-    h+='<div class="pl'+(i===st.turn&&st.players.length>1?' on':'')+'" style="color:'+(st.players.length>1?PCOL[i]:COL.text)+'">'+nm+' '+p.score+'<small>'+p.rerolls+'r</small></div>';
+    var away=NET.on&&NET.seats[i]&&!p.npc&&!NET.seats[i].on; // GREEN PHONE EDIT
+    h+='<div class="pl'+(i===st.turn&&st.players.length>1?' on':'')+(away?' away':'')+'" style="color:'+(st.players.length>1?PCOL[i]:COL.text)+'">'+esc(nm)+' '+p.score+'<small>'+(away?'away ':'')+p.rerolls+'r</small></div>';
   });
   document.getElementById('players').innerHTML=h;
   var multi=st.players.length>1;
@@ -1700,7 +1842,10 @@ function ui(){
   document.getElementById('placeBtn').disabled=!ok;
   var info=(st.players.length>1?pname(st.turn)+': ':'')+tr(DEFS[st.cur].n);
   if(AUTO.on)info=AUTO.idle?'View complete. Pan into the fog to grow more.':'Auto building. '+AUTO.n+' tiles placed this run.';
-  else if(P().npc)info+='. Thinking...';else if(!sel)info+='. Tap a glowing square.';
+  else if(st.over)info='Run over. '+P().score+' points.';
+  else if(P().npc)info+='. Thinking...';
+  else if(NET.on&&!myTurn())info=(NET.v?pname(st.turn)+' is placing: '+tr(DEFS[st.cur].n):'Waiting for the room to start');
+  else if(!sel)info+=(NET.on?'. Your turn, tap':'. Tap')+' a glowing square.';
   document.getElementById('info').textContent=info;
   document.getElementById('stats').textContent=tr('Map skin '+(VIEW.skin[0].toUpperCase()+VIEW.skin.slice(1))+'. Landmarks '+((st.landmarks||[]).length)+'. Tiles placed '+st.placed+'. Districts sealed '+st.cities+'. Lanes closed '+st.roads+'.');
   dirty=true;
@@ -1751,14 +1896,17 @@ cv.addEventListener('wheel',function(e){
   var wv=unM(e.clientX-W/2,e.clientY-H/2);cam.x=w[0]-wv[0]/cam.s;cam.y=w[1]-wv[1]/cam.s;dirty=true;
 },{passive:false});
 function tap(sx,sy){
-  if(P().npc||AUTO.on)return;
+  if(!canAct())return;
   var w=toWorld(sx,sy),k=K(Math.floor(w[0]/S),Math.floor(w[1]/S)),list=fits.get(k);
   if(list){
     if(sel===k&&list.indexOf(st.rot)>=0){place();return;}
     sel=k;if(list.indexOf(st.rot)<0)st.rot=list[0];
   }else sel=null;
-  ui();
+  ui();netPreview();
 }
+// GREEN PHONE EDIT: off turn input blocking
+function myTurn(){if(!NET.on)return true;return NET.v>0&&st.turn===NET.seat&&!P().npc;}
+function canAct(){return st&&!st.over&&!P().npc&&!AUTO.on&&myTurn();}
 
 function centerMap(){
   var p=(st.last||'0,0').split(',');cam.x=(+p[0]+.5)*S;cam.y=(+p[1]+.5)*S;dirty=true;save();
@@ -1776,36 +1924,279 @@ function applyView(){
   try{localStorage.setItem('tiletopia_view',JSON.stringify(VIEW));}catch(e){}
   if(st)ui();
 }
-document.getElementById('autoBtn').onclick=function(){setAuto((AUTO.on+1)%3);};
+document.getElementById('autoBtn').onclick=function(){
+  if(NET.on||(st&&st.mode!=='marathon')){toast('Auto is for solo Marathon maps');return;} // GREEN PHONE EDIT
+  setAuto((AUTO.on+1)%3);
+};
 var menuSkin=VIEW.skin;
 Array.prototype.forEach.call(document.querySelectorAll('#scount button'),function(b){
   b.classList.toggle('sel',b.dataset.s===menuSkin);
   b.onclick=function(){menuSkin=b.dataset.s;Array.prototype.forEach.call(document.querySelectorAll('#scount button'),function(x){x.classList.toggle('sel',x===b);});};
 });
 document.getElementById('viewBtn').onclick=function(){VIEW.iso=VIEW.iso?0:1;applyView();};
-function human(fn){return function(){if(st&&(P().npc||AUTO.on))return;fn();};}
-document.getElementById('rotBtn').onclick=human(rotate);
+function human(fn){return function(){if(!canAct())return;fn();};}
+document.getElementById('rotBtn').onclick=human(function(){rotate();netPreview();});
 document.getElementById('placeBtn').onclick=human(place);
 document.getElementById('holdBtn').onclick=human(hold);
 document.getElementById('rerollBtn').onclick=human(reroll);
 document.addEventListener('pointerdown',function(){if(VIEW.snd!==0)ac();},true);
 document.getElementById('sndBtn').onclick=function(){VIEW.snd=VIEW.snd===0?1:0;applyView();};
 var menu=document.getElementById('menu');
-document.getElementById('menuBtn').onclick=function(){ui();menu.classList.add('show');};
-document.getElementById('resumeBtn').onclick=function(){menu.classList.remove('show');};
+function closeOv(){Array.prototype.forEach.call(document.querySelectorAll('.ov.show'),function(o){o.classList.remove('show');});}
+function selRow(id,fn){Array.prototype.forEach.call(document.querySelectorAll('#'+id+' button'),function(b){
+  b.onclick=function(){Array.prototype.forEach.call(document.querySelectorAll('#'+id+' button'),function(x){x.classList.toggle('sel',x===b);});fn(b);};
+});}
+function markSel(id,attr,val){Array.prototype.forEach.call(document.querySelectorAll('#'+id+' button'),function(x){x.classList.toggle('sel',x.dataset[attr]===String(val));});}
+document.getElementById('menuBtn').onclick=function(){ui();markSel('mcount','m',st.mode||'marathon');menu.classList.add('show');};
+document.getElementById('resumeBtn').onclick=function(){menu.classList.remove('show');if(st.over)showOver(false);};
 document.getElementById('centerBtn').onclick=function(){centerMap();menu.classList.remove('show');};
-document.getElementById('newBtn').onclick=function(){if(AUTO.on)setAuto(0);if(npcTimer){clearTimeout(npcTimer);npcTimer=null;}newGame(menuN,menuB,menuSkin);menu.classList.remove('show');toast('New map started');};
-Array.prototype.forEach.call(document.querySelectorAll('#bcount button'),function(b){
-  b.onclick=function(){menuB=+b.dataset.n;Array.prototype.forEach.call(document.querySelectorAll('#bcount button'),function(x){x.classList.toggle('sel',x===b);});};
+document.getElementById('newBtn').onclick=function(){
+  if(AUTO.on)setAuto(0);if(npcTimer){clearTimeout(npcTimer);npcTimer=null;}
+  if(NET.on){ // GREEN PHONE EDIT: online, only the room creator can start a fresh map for the room
+    if(NET.seat!==0||!NET.v){toast('Only the room creator can start a new map');return;}
+    newGame(0,0,menuSkin,{mode:'marathon',npc:NET.seats.map(function(x){return x.bot||x.open;}),restart:true});
+  }else newGame(menuN,menuB,menuSkin,{mode:menuMode});
+  menu.classList.remove('show');toast(menuMode==='heart'&&!NET.on?'Heart Zone started':'New map started');
+};
+selRow('bcount',function(b){menuB=+b.dataset.n;});
+selRow('pcount',function(b){menuN=+b.dataset.n;});
+// GREEN PHONE EDIT: mode picker. Each mode keeps its own save, so switching brings that map back.
+var menuMode='marathon';
+selRow('mcount',function(b){
+  menuMode=b.dataset.m;
+  if(NET.on){toast('Online rooms play Marathon for now');markSel('mcount','m','marathon');menuMode='marathon';return;}
+  if(st.mode===menuMode)return;
+  if(AUTO.on)setAuto(0);if(npcTimer){clearTimeout(npcTimer);npcTimer=null;}
+  save();
+  if(!loadExact(menuMode))newGame(1,0,menuSkin,{mode:menuMode});
+  applyView();ui();
 });
-Array.prototype.forEach.call(document.querySelectorAll('#pcount button'),function(b){
-  b.onclick=function(){menuN=+b.dataset.n;Array.prototype.forEach.call(document.querySelectorAll('#pcount button'),function(x){x.classList.toggle('sel',x===b);});};
+function loadExact(mode){try{var s=JSON.parse(localStorage.getItem(saveKey(mode)));if(!s||!s.b)return false;}catch(e){return false;}return load(mode);}
+
+function esc(t){return String(t).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function rid(n){var a='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',o='',r=new Uint8Array(n);(window.crypto||window.msCrypto).getRandomValues(r);for(var i=0;i<n;i++)o+=a[r[i]%62];return o;}
+function lsGet(k){try{return localStorage.getItem(k);}catch(e){return null;}}
+function lsSet(k,v){try{if(v==null)localStorage.removeItem(k);else localStorage.setItem(k,v);}catch(e){}}
+var TOKEN=lsGet('tiletopia_token');if(!TOKEN){TOKEN=rid(24);lsSet('tiletopia_token',TOKEN);}
+var nameIn=document.getElementById('nameIn');nameIn.value=lsGet('tiletopia_name')||'';
+nameIn.oninput=function(){lsSet('tiletopia_name',nameIn.value.trim().slice(0,16));};
+function myName(){return (lsGet('tiletopia_name')||'').trim()||'Player';}
+(function(){var m=/[?&]server=([^&]+)/.exec(location.search);if(m){var v=decodeURIComponent(m[1]);lsSet('tiletopia_server',v==='clear'?null:v);}})();
+function serverHost(){return (lsGet('tiletopia_server')||SERVER_URL||'').replace(/^\w+:\/\//,'').replace(/\/+$/,'');}
+function insecure(h){return /^(localhost|127\.|10\.|192\.168\.)/.test(h);}
+function wsUrl(){var h=serverHost();return (insecure(h)?'ws://':'wss://')+h;}
+function httpUrl(path){var h=serverHost();return (insecure(h)?'http://':'https://')+h+path;}
+
+// ---------- GREEN PHONE EDIT: online rooms ----------
+var NET={on:false,want:false,ws:null,code:'',seat:-1,seats:[],botRunner:-1,started:false,v:0,retry:0,timer:null,create:null,outbox:null,lastPrev:0};
+var lobby=document.getElementById('lobby');
+function lstat(t){document.getElementById('lstat').textContent=t||'';}
+function netSend(o){if(NET.ws&&NET.ws.readyState===1){NET.ws.send(JSON.stringify(o));return true;}return false;}
+function netOpen(){
+  clearTimeout(NET.timer);NET.timer=null;
+  if(!serverHost()){lstat('The server address is not set yet, so online play is off for now.');return;}
+  if(NET.ws){var old=NET.ws;NET.ws=null;try{old.close();}catch(e){}}
+  NET.want=true;
+  var ws;try{ws=new WebSocket(wsUrl());}catch(e){netRetry();return;}
+  NET.ws=ws;lstat('Connecting...');
+  ws.onopen=function(){
+    if(NET.ws!==ws)return;
+    if(NET.create)netSend({t:'create',token:TOKEN,name:myName(),seats:NET.create.seats});
+    else if(NET.code)netSend({t:'join',code:NET.code,token:TOKEN,name:myName()});
+  };
+  ws.onmessage=function(e){if(NET.ws!==ws)return;var m;try{m=JSON.parse(e.data);}catch(x){return;}netMsg(m);};
+  ws.onclose=function(e){
+    if(NET.ws!==ws)return;NET.ws=null;
+    if(e.code===4000){NET.want=false;lstat('This room was opened on another tab or phone with your player.');lobbyUi();return;}
+    if(NET.want)netRetry();
+    ui();lobbyUi();
+  };
+}
+function netRetry(){
+  // Waits 1, 2, 4, 8, 16, then 30 seconds between tries.
+  var d=Math.min(30000,1000*Math.pow(2,NET.retry++));
+  lstat('Connection lost. Trying again in '+Math.round(d/1000)+'s.');
+  clearTimeout(NET.timer);NET.timer=setTimeout(netOpen,d);
+}
+function netClose(){
+  NET.want=false;clearTimeout(NET.timer);NET.timer=null;
+  if(NET.ws){var w=NET.ws;NET.ws=null;try{w.close();}catch(e){}}
+}
+document.addEventListener('visibilitychange',function(){
+  if(!document.hidden&&NET.want&&!NET.ws){NET.retry=0;netOpen();}
 });
+function rememberRoom(){lsSet('tiletopia_room',NET.code?JSON.stringify({code:NET.code,at:Date.now()}):null);}
+function netMsg(m){
+  if(m.t==='joined'){
+    var fresh=!NET.on||NET.code!==m.code;
+    NET.on=true;NET.code=m.code;NET.seat=m.seat;NET.retry=0;NET.create=null;
+    if(fresh){NET.v=0;NET.outbox=null;if(AUTO.on)setAuto(0);if(npcTimer){clearTimeout(npcTimer);npcTimer=null;}}
+    rememberRoom();lstat('');lobbyUi();ui();
+  }else if(m.t==='presence'){
+    NET.seats=m.seats;NET.botRunner=m.botRunner;NET.started=m.started;
+    applySeats();lobbyUi();
+    if(st&&NET.v){ui();maybeNPC();}
+  }else if(m.t==='state'){
+    // A move made while the connection was down goes out again if the server is one version behind it.
+    if(NET.outbox&&!m.reject&&NET.outbox.v===m.v+1&&netSend(NET.outbox))return;
+    NET.outbox=null;receiveState(m.state,m.v,m.reject);
+  }else if(m.t==='ack'){
+    if(NET.outbox&&NET.outbox.v===m.v)NET.outbox=null;
+    NET.v=Math.max(NET.v,m.v);
+  }else if(m.t==='preview'){
+    if(!st||m.v!==NET.v||myTurn())return;
+    sel=m.sel&&fits.has(m.sel)?m.sel:null;st.rot=m.rot;dirty=true;ui();
+  }else if(m.t==='gone'){
+    netClose();NET.on=false;NET.code='';NET.seat=-1;rememberRoom();
+    if(NET.v){NET.v=0;if(!load())newGame(1);applyView();ui();}
+    lstat(m.msg+'. Rooms close a day after their last move.');lobbyUi();
+  }else if(m.t==='error'){
+    lstat(m.msg);toast(m.msg);
+    if(!NET.on){netClose();}
+  }
+}
+function applySeats(){
+  if(!st||!NET.v)return;
+  NET.seats.forEach(function(x,i){if(st.players[i])st.players[i].npc=!!x.bot;});
+}
+function receiveState(s,v,reject){
+  var first=!NET.v,prevPlaced=st?st.placed:0,prevTurn=st?st.turn:-1,prevScores=st?st.players.map(function(p){return p.score;}):[];
+  if(npcTimer){clearTimeout(npcTimer);npcTimer=null;}
+  if(AUTO.on)setAuto(0);
+  var keepCam=cam;
+  deserialize(s);NET.v=v;applySeats();applyView();
+  cam=keepCam;sel=null;recompute();
+  if(first){var p=(st.last||'0,0').split(',');cam={x:(+p[0]+.5)*S,y:(+p[1]+.5)*S,s:1};closeOv();toast('Room '+NET.code+' game on');}
+  else if(!reject&&st.placed===prevPlaced+1&&st.last){
+    // Show what the other phone did: drop animation on the new tile and the points it earned.
+    placeAnim={k:st.last,t:performance.now()};
+    var q=st.last.split(','),wx=(+q[0]+.5)*S,wy=(+q[1]+.5)*S;
+    st.players.forEach(function(p,i){var d=p.score-(prevScores[i]||0);if(d>0)popups.push({x:wx,y:wy-i*14,text:'+'+d,c:PCOL[i],t:performance.now()});});
+    playChimes([]);
+  }
+  if(reject)toast('Caught up with the room');
+  if(myTurn()&&prevTurn!==st.turn&&!first)toast('Your turn');
+  dirty=true;ui();maybeNPC();
+}
+function netCommit(restart){
+  var s=serialize(),msg;
+  if(restart||(!NET.v&&NET.seat===0&&!NET.started)){msg={t:'start',state:s,restart:!!restart};NET.v=(NET.v||0)+1;}
+  else{NET.v++;msg={t:'state',v:NET.v,state:s};}
+  if(!netSend(msg))NET.outbox=msg.t==='state'?msg:null;
+}
+function netPreview(){
+  if(!NET.on||!NET.v||!myTurn())return;
+  netSend({t:'preview',sel:sel,rot:st.rot});
+}
+function leaveRoom(){
+  netSend({t:'leave'});netClose();
+  NET.on=false;NET.code='';NET.seat=-1;NET.v=0;NET.seats=[];NET.outbox=null;rememberRoom();
+  if(npcTimer){clearTimeout(npcTimer);npcTimer=null;}
+  if(!load())newGame(1);
+  applyView();ui();lobbyUi();toast('Back to your own map');
+}
+var lobbySeats=2;
+selRow('lseats',function(b){lobbySeats=+b.dataset.n;});
+document.getElementById('onlineBtn').onclick=function(){menu.classList.remove('show');lobbyUi();lobby.classList.add('show');};
+document.getElementById('lobbyClose').onclick=function(){lobby.classList.remove('show');};
+document.getElementById('createBtn').onclick=function(){
+  if(!serverHost()){lstat('The server address is not set yet, so online play is off for now.');return;}
+  NET.create={seats:lobbySeats};NET.code='';NET.retry=0;netOpen();
+};
+var codeIn=document.getElementById('codeIn');
+codeIn.oninput=function(){codeIn.value=codeIn.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,4);};
+document.getElementById('joinBtn').onclick=function(){
+  var c=codeIn.value;if(c.length!==4){lstat('Room codes are four letters.');return;}
+  NET.create=null;NET.code=c;NET.retry=0;netOpen();
+};
+document.getElementById('startBtn').onclick=function(){
+  if(NET.seat!==0||NET.started)return;
+  if(AUTO.on)setAuto(0);
+  newGame(0,0,menuSkin,{mode:'marathon',npc:NET.seats.map(function(x){return x.bot||x.open;})});
+  lobby.classList.remove('show');
+};
+document.getElementById('leaveBtn').onclick=leaveRoom;
+function lobbyUi(){
+  var inRoom=NET.on&&NET.code;
+  document.getElementById('lbOut').style.display=inRoom?'none':'block';
+  document.getElementById('lbIn').style.display=inRoom?'block':'none';
+  if(!inRoom)return;
+  document.getElementById('roomCode').textContent=NET.code;
+  var h='';
+  NET.seats.forEach(function(x,i){
+    var who=x.open?'Open, becomes a bot':x.bot?(x.swapped?'Bot (player away)':'Bot'):esc(x.name||'Player');
+    var tag=i===NET.seat?'you':x.open||x.bot?'':x.on?'here':'away '+Math.floor(x.away/60)+':'+('0'+x.away%60).slice(-2);
+    if(i===NET.botRunner&&NET.seats.some(function(y){return y.bot||y.open;}))tag+=(tag?', ':'')+'runs bots';
+    h+='<div class="seat" style="color:'+PCOL[i]+'"><span>'+PNAME[i]+': '+who+'</span><small>'+tag+'</small></div>';
+  });
+  document.getElementById('seatList').innerHTML=h;
+  var creator=NET.seat===0;
+  var sb=document.getElementById('startBtn');sb.style.display=creator&&!NET.started?'':'none';
+  document.getElementById('roomHint').textContent=NET.started?'Game in progress. Players away for two minutes are handed to a bot until they come back.':creator?'Share this code. Press Start when everyone is in.':'Waiting for the room creator to start.';
+}
+
+// ---------- GREEN PHONE EDIT: results and leaderboards ----------
+var overEl=document.getElementById('over'),boardPeriod='all',lastRunId=lsGet('tiletopia_lastrun')||'';
+selRow('bperiod',function(b){boardPeriod=b.dataset.p;showBoard('heart');});
+document.getElementById('againBtn').onclick=function(){overEl.classList.remove('show');newGame(1,0,menuSkin,{mode:'heart'});toast('Heart Zone started');};
+document.getElementById('overMenu').onclick=function(){overEl.classList.remove('show');ui();menu.classList.add('show');};
+document.getElementById('scoresBtn').onclick=function(){menu.classList.remove('show');showOver(true);};
+function runRec(){return {road:st.rec.road.n,city:st.rec.city.n,river:st.rec.river.n,meadow:(st.rec.meadow||{n:0}).n};}
+function gameOver(){
+  if(st.sub)return showOver(false);
+  st.sub=true;save();
+  playChimes([],true);
+  queueRun({mode:'heart',score:st.players[0].score,tiles:st.placed,ms:Date.now()-(st.t0||Date.now()),seed:String(st.seed),rec:runRec()});
+  showOver(false);flushRuns();
+}
+function showOver(boardOnly){
+  document.getElementById('overTitle').textContent=boardOnly?'Heart Zone scores':'Out of hearts';
+  var r=st&&st.mode==='heart'?runRec():null;
+  document.getElementById('overStats').textContent=boardOnly||!r?'':tr('Score '+st.players[0].score+'. Tiles placed '+st.placed+'. Longest Road '+r.road+', Biggest Castle '+r.city+', Longest River '+r.river+', Biggest Meadow '+r.meadow+'.');
+  var pend=(lsGet('tiletopia_pending')||'[]').length>2;
+  document.getElementById('overRank').textContent=boardOnly||!pend?'':serverHost()?'Sending your score...':'Your score is saved on this phone and goes on the board once the server is set up.';
+  overEl.classList.add('show');showBoard('heart');
+}
+function queueRun(run){
+  var q=[];try{q=JSON.parse(lsGet('tiletopia_pending')||'[]');}catch(e){}
+  q.push(run);lsSet('tiletopia_pending',JSON.stringify(q.slice(-20)));
+}
+function flushRuns(){
+  if(!serverHost())return;
+  var q=[];try{q=JSON.parse(lsGet('tiletopia_pending')||'[]');}catch(e){}
+  if(!q.length)return;
+  var run=q[0];run.token=TOKEN;run.name=myName();
+  fetch(httpUrl('/score'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(run)})
+    .then(function(r){return r.json().then(function(j){return [r.status,j];});})
+    .then(function(a){
+      var st2=a[0],j=a[1];
+      if(st2===429){setTimeout(flushRuns,6000);return;}
+      q.shift();lsSet('tiletopia_pending',JSON.stringify(q));
+      if(st2===200){lastRunId=j.id;lsSet('tiletopia_lastrun',j.id);document.getElementById('overRank').textContent='Rank '+j.rank+' of '+j.total+' all time.';showBoard('heart');}
+      else document.getElementById('overRank').textContent='Score not accepted: '+(j.error||st2);
+      if(q.length)setTimeout(flushRuns,6000);
+    })
+    .catch(function(){document.getElementById('overRank').textContent='Offline. Your score will send next time the game opens.';});
+}
+function showBoard(mode){
+  var el=document.getElementById('boardList');
+  if(!serverHost()){el.innerHTML='';return;}
+  el.innerHTML='<div class="stats">Loading board...</div>';
+  fetch(httpUrl('/board?mode='+mode+'&period='+boardPeriod+'&n=10')).then(function(r){return r.json();}).then(function(j){
+    if(!j.rows||!j.rows.length){el.innerHTML='<div class="stats">No scores yet.</div>';return;}
+    el.innerHTML=j.rows.map(function(r,i){return '<div class="brow'+(r.id===lastRunId?' me':'')+'"><span>'+(i+1)+'. '+esc(r.name)+'</span><span>'+r.score+' pts, '+r.tiles+' tiles</span></div>';}).join('');
+  }).catch(function(){el.innerHTML='<div class="stats">Board unavailable right now.</div>';});
+}
 
 resize();
 applyView();
 if(!load())newGame(1);else maybeNPC();
+markSel('mcount','m',st.mode||'marathon');menuMode=st.mode||'marathon';
 ui();
+flushRuns();
+(function(){ // GREEN PHONE EDIT: rejoin the last room automatically if it is less than a day old
+  try{var r=JSON.parse(lsGet('tiletopia_room')||'null');if(r&&r.code&&Date.now()-r.at<86400000&&serverHost()){NET.code=r.code;netOpen();}else rememberRoom();}catch(e){}
+})();
 requestAnimationFrame(frame);
 })();
 </script>
