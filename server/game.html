@@ -192,6 +192,8 @@ input.tin.nm{text-transform:none}
     <div id="roomCode"></div>
     <div class="stats" id="roomHint"></div>
     <div id="seatList"></div>
+    <div id="lmodeWrap"><p style="margin:10px 0 4px"><b>Mode</b></p><div class="pc" id="lmode"><button data-m="marathon" class="sel">Marathon</button><button data-m="classic">Classic</button></div></div>
+    <div class="stats" id="lmodeTxt"></div>
     <div class="mrow"><button id="startBtn" class="primary">Start game</button></div>
     <div class="mrow"><button id="leaveBtn">Leave room</button></div>
   </div>
@@ -202,7 +204,7 @@ input.tin.nm{text-transform:none}
   <h2 id="overTitle">Out of hearts</h2>
   <div class="stats" id="overStats"></div>
   <div class="stats" id="overRank"></div>
-  <div class="pc" id="bmode" style="flex-wrap:wrap"><button data-m="heart" class="sel">Heart</button><button data-m="classic">Classic</button><button data-m="sprint">Sprint</button><button data-m="daily">Daily</button></div>
+  <div class="pc" id="bmode" style="flex-wrap:wrap"><button data-m="heart" class="sel">Heart</button><button data-m="classic">Classic</button><button data-m="sprint">Sprint</button><button data-m="daily">Daily</button><button data-m="room">Rooms</button></div>
   <div class="pc" id="bperiod"><button data-p="all" class="sel">All time</button><button data-p="week">This week</button></div>
   <div id="boardList"></div>
   <div class="mrow"><button id="againBtn" class="primary">New Heart Zone</button><button id="overMenu">Menu</button></div>
@@ -2038,7 +2040,7 @@ document.getElementById('newBtn').onclick=function(){
   if(AUTO.on)setAuto(0);if(npcTimer){clearTimeout(npcTimer);npcTimer=null;}
   if(NET.on){ // GREEN PHONE EDIT: online, only the room creator can start a fresh map for the room
     if(NET.seat!==0||!NET.v){toast('Only the room creator can start a new map');return;}
-    newGame(0,0,menuSkin,{mode:'marathon',npc:NET.seats.map(function(x){return x.bot||x.open;}),restart:true});
+    newGame(0,0,menuSkin,{mode:st.mode==='classic'?'classic':'marathon',npc:NET.seats.map(function(x){return x.bot||x.open;}),restart:true});
     toast('New map started');
   }else startMode(menuMode,menuN,menuB);
   menu.classList.remove('show');
@@ -2049,7 +2051,7 @@ selRow('pcount',function(b){menuN=+b.dataset.n;});
 var menuMode='marathon';
 selRow('mcount',function(b){
   menuMode=b.dataset.m;
-  if(NET.on){toast('Online rooms play Marathon for now');markSel('mcount','m','marathon');menuMode='marathon';return;}
+  if(NET.on){toast('The room mode is picked in the lobby');markSel('mcount','m',st.mode||'marathon');menuMode=st.mode||'marathon';return;}
   if(st.mode===menuMode)return;
   if(AUTO.on)setAuto(0);if(npcTimer){clearTimeout(npcTimer);npcTimer=null;}
   save();
@@ -2086,7 +2088,7 @@ function wsUrl(){var h=serverHost();return (insecure(h)?'ws://':'wss://')+h;}
 function httpUrl(path){var h=serverHost();return (insecure(h)?'http://':'https://')+h+path;}
 
 // ---------- GREEN PHONE EDIT: online rooms ----------
-var NET={on:false,want:false,ws:null,code:'',seat:-1,seats:[],botRunner:-1,started:false,v:0,retry:0,timer:null,create:null,outbox:null,lastPrev:0};
+var NET={on:false,want:false,ws:null,code:'',seat:-1,seats:[],botRunner:-1,started:false,mode:'marathon',v:0,retry:0,timer:null,create:null,outbox:null,lastPrev:0};
 var lobby=document.getElementById('lobby');
 function lstat(t){document.getElementById('lstat').textContent=t||'';}
 function netSend(o){if(NET.ws&&NET.ws.readyState===1){NET.ws.send(JSON.stringify(o));return true;}return false;}
@@ -2131,7 +2133,7 @@ function netMsg(m){
     if(fresh){NET.v=0;NET.outbox=null;if(AUTO.on)setAuto(0);if(npcTimer){clearTimeout(npcTimer);npcTimer=null;}}
     rememberRoom();lstat('');lobbyUi();ui();
   }else if(m.t==='presence'){
-    NET.seats=m.seats;NET.botRunner=m.botRunner;NET.started=m.started;
+    NET.seats=m.seats;NET.botRunner=m.botRunner;NET.started=m.started;NET.mode=m.mode||'marathon';
     applySeats();lobbyUi();
     if(st&&NET.v){ui();maybeNPC();}
   }else if(m.t==='state'){
@@ -2158,7 +2160,7 @@ function applySeats(){
   NET.seats.forEach(function(x,i){if(st.players[i])st.players[i].npc=!!x.bot;});
 }
 function receiveState(s,v,reject){
-  var first=!NET.v,prevPlaced=st?st.placed:0,prevTurn=st?st.turn:-1,prevScores=st?st.players.map(function(p){return p.score;}):[];
+  var first=!NET.v,wasOver=st&&st.over,prevPlaced=st?st.placed:0,prevTurn=st?st.turn:-1,prevScores=st?st.players.map(function(p){return p.score;}):[];
   if(npcTimer){clearTimeout(npcTimer);npcTimer=null;}
   if(AUTO.on)setAuto(0);
   var keepCam=cam;
@@ -2173,6 +2175,7 @@ function receiveState(s,v,reject){
     playChimes([]);
   }
   if(reject)toast('Caught up with the room');
+  if(st.over&&!wasOver&&!first){playChimes([],true);showOver(false);}
   if(myTurn()&&prevTurn!==st.turn&&!first)toast('Your turn');
   dirty=true;ui();maybeNPC();
 }
@@ -2210,10 +2213,11 @@ document.getElementById('joinBtn').onclick=function(){
 document.getElementById('startBtn').onclick=function(){
   if(NET.seat!==0||NET.started)return;
   if(AUTO.on)setAuto(0);
-  newGame(0,0,menuSkin,{mode:'marathon',npc:NET.seats.map(function(x){return x.bot||x.open;})});
+  newGame(0,0,menuSkin,{mode:NET.mode||'marathon',npc:NET.seats.map(function(x){return x.bot||x.open;})});
   lobby.classList.remove('show');
 };
 document.getElementById('leaveBtn').onclick=leaveRoom;
+selRow('lmode',function(b){NET.mode=b.dataset.m;netSend({t:'mode',mode:b.dataset.m});lobbyUi();});
 function lobbyUi(){
   var inRoom=NET.on&&NET.code;
   document.getElementById('lbOut').style.display=inRoom?'none':'block';
@@ -2230,6 +2234,9 @@ function lobbyUi(){
   document.getElementById('seatList').innerHTML=h;
   var creator=NET.seat===0;
   var sb=document.getElementById('startBtn');sb.style.display=creator&&!NET.started?'':'none';
+  // GREEN PHONE EDIT: room mode
+  document.getElementById('lmodeWrap').style.display=creator&&!NET.started?'':'none';markSel('lmode','m',NET.mode);
+  document.getElementById('lmodeTxt').textContent='Mode: '+(MODES[NET.mode]||MODES.marathon).name+(NET.mode==='classic'?'. 72 tiles shared by the room, scores go on the Rooms board.':'.');
   document.getElementById('roomHint').textContent=NET.started?'Game in progress. Players away for two minutes are handed to a bot until they come back.':creator?'Share this code. Press Start when everyone is in.':'Waiting for the room creator to start.';
 }
 
@@ -2270,7 +2277,7 @@ function overTitle(){
   return 'Game over';
 }
 function showOver(boardOnly){
-  var m=!boardOnly&&st&&MODES[st.mode]&&MODES[st.mode].ranked?st.mode:boardMode;
+  var m=!boardOnly&&st&&NET.on&&st.mode==='classic'?'room':!boardOnly&&st&&MODES[st.mode]&&MODES[st.mode].ranked?st.mode:boardMode;
   boardMode=m;markSel('bmode','m',m);
   document.getElementById('overTitle').textContent=boardOnly?'Scores':overTitle();
   var txt='';
@@ -2284,13 +2291,15 @@ function showOver(boardOnly){
     if(st.fs)txt+='End of bag: open features '+st.fs.open+', unfinished cores '+st.fs.cores+', open meadows '+st.fs.meadows+', record bonuses '+st.fs.records+'. ';
     txt+='Longest Road '+r.road+', Biggest Castle '+r.city+', Longest River '+r.river+', Biggest Meadow '+r.meadow+'.';
     if(st.practice)txt+=' Practice run, not ranked.';
-    else if(MI().ranked&&st.players.length>1&&!NET.on)txt+=' Games with more than one player are not ranked.';
+    else if(NET.on&&st.mode==='classic')txt+=' Room '+NET.code+' scores go on the Rooms board.';
+    else if(MI().ranked&&st.players.length>1)txt+=' Games with more than one player on one phone are not ranked.';
   }
   document.getElementById('overStats').textContent=tr(txt);
   var pend=(lsGet('tiletopia_pending')||'[]').length>2;
   document.getElementById('overRank').textContent=boardOnly||!pend?'':serverHost()?'Sending your score...':'Your score is saved on this phone and goes on the board once the server is set up.';
   var ag=document.getElementById('againBtn');ag.style.display=boardOnly?'none':'';
-  ag.textContent='New '+(MODES[st&&st.mode]||MODES[m]).name;
+  ag.textContent='New '+(MODES[st&&st.mode]||MODES[m]||MODES.classic).name;
+  if(NET.on&&!boardOnly&&NET.seat!==0)ag.style.display='none';
   overEl.classList.add('show');showBoard(m);
 }
 function queueRun(run){

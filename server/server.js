@@ -22,6 +22,8 @@ const EVICT_MS = 60 * 60 * 1000;        // empty rooms leave the memory cache af
 const MAX_SEATS = 4;
 const MAX_STATE = 4 * 1024 * 1024;
 const MODES = ['heart', 'sprint', 'classic', 'daily'];
+const BOARD_MODES = MODES.concat(['room']);       // GREEN PHONE EDIT: room scores are written by the server only
+const ROOM_MODES = ['marathon', 'classic'];
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ';
 
 // ---------- storage ----------
@@ -223,8 +225,8 @@ async function onStart(ws, m) {
     if (room.started && !m.restart) return send(ws, { t: 'error', msg: 'Game already started' });
     if (!stateLooksOk(room, m.state)) return send(ws, { t: 'error', msg: 'Start state does not match the seats' });
     room.seats.forEach((s, i) => { if (s.open) { s.open = false; s.bot = true; s.name = ''; } m.state.players[i].npc = !!s.bot; });
-    room.started = true; room.v = room.v + 1; room.state = m.state;
-    room.mode = typeof m.state.mode === 'string' ? m.state.mode : 'marathon';
+    room.started = true; room.v = room.v + 1; room.state = m.state; room.recorded = false;
+    room.mode = ROOM_MODES.includes(m.state.mode) ? m.state.mode : 'marathon';
     await saveRoom(room);
     send(ws, { t: 'ack', v: room.v });
     broadcast(room.code, { t: 'state', v: room.v, state: room.state, by: ws.seat }, ws);
@@ -242,10 +244,37 @@ async function onState(ws, m) {
     }
     room.seats.forEach((s, i) => { m.state.players[i].npc = !!s.bot; });
     room.v = m.v; room.state = m.state; room.turnAt = Date.now();
+    if (m.state.over && room.mode === 'classic' && !room.recorded) { room.recorded = true; await recordRoom(room).catch(e => console.error('recordRoom', e)); }
     await saveRoom(room);
     send(ws, { t: 'ack', v: room.v });
     broadcast(room.code, { t: 'state', v: room.v, state: room.state, by: ws.seat }, ws);
   });
+}
+
+// GREEN PHONE EDIT: the room creator picks the mode before the start, everyone sees it in the lobby.
+async function onMode(ws, m) {
+  await withRoom(ws.code, async () => {
+    const room = rooms.get(ws.code); if (!room || ws.seat !== 0 || room.started) return;
+    if (!ROOM_MODES.includes(m.mode)) return;
+    room.mode = m.mode; await saveRoom(room);
+    broadcast(room.code, presence(room));
+  });
+}
+// When a Classic room finishes, the server puts every human seat on the Rooms board. It watched every
+// move of the game, so these runs count as verified without a replay.
+async function recordRoom(room) {
+  const s = room.state, now = Date.now();
+  for (let i = 0; i < room.seats.length; i++) {
+    const seat = room.seats[i], pl = s.players[i];
+    if (!pl || seat.bot || seat.open) continue;
+    const tiles = s.b.filter(t => t[3] === i).length;
+    const id = now.toString(36) + crypto.randomBytes(3).toString('hex');
+    const run = { id, name: cleanName(seat.name), mode: 'room', score: pl.score | 0, tiles, ms: now - (room.created || now), at: now, seed: String(s.seed || ''), room: room.code, verified: true,
+      players: room.seats.length, rec: {} };
+    await store.set('tt:run:' + id, JSON.stringify(run));
+    await store.zadd(lbKey('room', 'all'), run.score, id);
+    const wk = lbKey('room', 'week'); await store.zadd(wk, run.score, id); await store.expire(wk, 40 * 86400);
+  }
 }
 
 function onPreview(ws, m) {
@@ -348,7 +377,7 @@ async function postScore(body) {
   return [200, { id, rank: rank == null ? null : rank + 1, total: await store.zcard(all), verified }];
 }
 async function getBoard(q) {
-  const mode = q.get('mode'); if (!MODES.includes(mode)) return [400, { error: 'Unknown mode' }];
+  const mode = q.get('mode'); if (!BOARD_MODES.includes(mode)) return [400, { error: 'Unknown mode' }];
   const n = Math.max(1, Math.min(50, +q.get('n') || 10));
   let period = q.get('period') === 'week' ? 'week' : 'all', key;
   if (mode === 'daily') {
@@ -360,7 +389,7 @@ async function getBoard(q) {
   for (const e of top) {
     const raw = await store.get('tt:run:' + e.m); if (!raw) continue;
     const r = JSON.parse(raw);
-    rows.push({ id: r.id, name: r.name, score: r.score, tiles: r.tiles, at: r.at, rec: r.rec, verified: !!r.verified });
+    rows.push({ id: r.id, name: r.name, score: r.score, tiles: r.tiles, at: r.at, rec: r.rec, verified: !!r.verified, room: r.room || '' });
   }
   return [200, { mode, period, rows }];
 }
@@ -406,6 +435,7 @@ wss.on('connection', ws => {
     if (m.t === 'start') return onStart(ws, m);
     if (m.t === 'state') return onState(ws, m);
     if (m.t === 'preview') return onPreview(ws, m);
+    if (m.t === 'mode') return onMode(ws, m);
     if (m.t === 'leave') return onLeave(ws);
   });
   ws.on('close', () => onClose(ws));
